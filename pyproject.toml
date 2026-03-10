@@ -1,0 +1,22 @@
+[project]
+name = "legion-koi"
+version = "0.1.0"
+description = "Legion's sovereign KOI-net node — knowledge federation for the plugin ecosystem"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "koi-net~=1.2",
+    "rid-lib>=3.2.7",
+    "fastapi>=0.115.12",
+    "pydantic>=2.10.6",
+    "uvicorn>=0.34.2",
+    "watchdog>=4.0.0",
+    "structlog>=25.4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/legion_koi"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

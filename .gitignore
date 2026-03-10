@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# KOI-net runtime
+.rid_cache/
+state/
+*.pem
+.env
+config.yaml
+*.ndjson
+dropped_logs.txt
