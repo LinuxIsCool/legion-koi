@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn>=0.34.2",
     "watchdog>=4.0.0",
     "structlog>=25.4.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [tool.hatch.build.targets.wheel]
