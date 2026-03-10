@@ -2,7 +2,7 @@ from rid_lib.core import ORN
 
 
 class LegionSession(ORN):
-    namespace = "legion.session"
+    namespace = "legion.claude-session"
 
     def __init__(self, session_id: str):
         self.session_id = session_id

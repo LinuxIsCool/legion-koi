@@ -2,7 +2,7 @@ from rid_lib.core import ORN
 
 
 class LegionRecording(ORN):
-    namespace = "legion.recording"
+    namespace = "legion.claude-recording"
 
     def __init__(self, source: str, identifier: str):
         self.source = source

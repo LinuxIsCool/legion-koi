@@ -2,7 +2,7 @@ from rid_lib.core import ORN
 
 
 class LegionVenture(ORN):
-    namespace = "legion.venture"
+    namespace = "legion.claude-venture"
 
     def __init__(self, stage: str, id: str):
         self.stage = stage

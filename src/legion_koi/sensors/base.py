@@ -26,6 +26,11 @@ class _FileHandler(FileSystemEventHandler):
         if not event.is_directory:
             self.sensor._on_file_event(Path(event.src_path))
 
+    def on_moved(self, event: FileSystemEvent) -> None:
+        # Atomic writes (write tmp + rename) emit MOVED_TO, not CREATE
+        if not event.is_directory:
+            self.sensor._on_file_event(Path(event.dest_path))
+
 
 class BaseSensor(ABC):
     def __init__(

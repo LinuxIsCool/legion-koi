@@ -2,7 +2,7 @@ from rid_lib.core import ORN
 
 
 class LegionJournal(ORN):
-    namespace = "legion.journal"
+    namespace = "legion.claude-journal"
 
     def __init__(self, date: str, slug: str):
         self.date = date

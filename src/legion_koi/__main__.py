@@ -1,9 +1,9 @@
 """Legion KOI-net node entry point."""
 
+import time
 from pathlib import Path
 
 import structlog
-from rid_lib.ext import Bundle
 
 from .node import LegionKoiNode
 from .sensors.journal_sensor import JournalSensor
@@ -11,15 +11,30 @@ from .sensors.journal_sensor import JournalSensor
 log = structlog.stdlib.get_logger()
 
 
+def _ensure_identity(node) -> None:
+    """Ensure node_rid is set from the loaded private key.
+
+    koi-net's SecureManager sets node_rid during key *creation* but not
+    when loading an existing PEM with a fresh config.yaml. This fills the gap.
+    """
+    if node.identity.rid is not None:
+        return
+
+    pub_key = node.secure_manager.priv_key.public_key()
+    node.config.koi_net.node_rid = pub_key.to_node_rid(
+        name=node.config.koi_net.node_name
+    )
+    if not node.config.koi_net.node_profile.public_key:
+        node.config.koi_net.node_profile.public_key = pub_key.to_der()
+    node.config.save_to_yaml()
+    log.info("identity.derived_from_existing_key", rid=str(node.identity.rid))
+
+
 def main():
     node = LegionKoiNode()
 
-    # Write own identity to cache
-    identity_bundle = Bundle.generate(
-        rid=node.identity.rid,
-        contents=node.identity.profile.model_dump(),
-    )
-    node.cache.write(identity_bundle)
+    # Ensure identity is set before node.start() triggers ProfileMonitor
+    _ensure_identity(node)
 
     # Set up journal sensor
     sensor_config = node.config.sensors
