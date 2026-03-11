@@ -10,7 +10,10 @@ from .node import LegionKoiNode
 from .sensors.journal_sensor import JournalSensor
 from .sensors.venture_sensor import VentureSensor
 from .sensors.logging_sensor import LoggingSensor
+from .sensors.recording_sensor import RecordingSensor
+from .sensors.message_sensor import MessageSensor
 from .storage.postgres import PostgresStorage
+from .embeddings import get_embedder
 
 log = structlog.stdlib.get_logger()
 
@@ -82,7 +85,15 @@ def main():
     storage = None
     try:
         storage = PostgresStorage(dsn=node.config.postgres.dsn)
-        storage.initialize()
+        # Initialize with embedding dimension from auto-detected provider
+        try:
+            embedder = get_embedder()
+            embedding_dim = embedder.get_dimensions()
+            log.info("embedder.detected", model=embedder.get_model(), dimensions=embedding_dim)
+        except Exception:
+            embedding_dim = None
+            log.warning("embedder.unavailable", msg="Starting without embeddings")
+        storage.initialize(embedding_dim=embedding_dim)
         handlers._postgres_storage = storage
         log.info("postgres.connected")
     except Exception:
@@ -107,13 +118,25 @@ def main():
         kobj_push=node.kobj_queue.push,
         poll_interval=cfg.logging_poll_interval,
     )
+    recording_sensor = RecordingSensor(
+        db_path=Path(cfg.recording_db_path).expanduser(),
+        state_path=Path(cfg.recording_state_path),
+        kobj_push=node.kobj_queue.push,
+        poll_interval=cfg.recording_poll_interval,
+    )
+    message_sensor = MessageSensor(
+        db_path=Path(cfg.message_db_path).expanduser(),
+        state_path=Path(cfg.message_state_path),
+        kobj_push=node.kobj_queue.push,
+        poll_interval=cfg.message_poll_interval,
+    )
 
     # Backfill PostgreSQL from rid_cache (bundles cached before PostgreSQL was added)
     if storage:
         _backfill_postgres(storage, node.config.koi_net.cache_directory_path)
 
     # Initial scans
-    all_sensors = [journal_sensor, venture_sensor, logging_sensor]
+    all_sensors = [journal_sensor, venture_sensor, logging_sensor, recording_sensor, message_sensor]
     for sensor in all_sensors:
         bundles = sensor.scan_all()
         for bundle in bundles:
