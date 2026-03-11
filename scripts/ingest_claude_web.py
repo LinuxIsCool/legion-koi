@@ -150,7 +150,7 @@ def build_project_contents(project: dict) -> dict:
 
 
 def ingest_conversations(conn, dry_run: bool = False):
-    """Ingest conversations.json → legion.claude-conversation bundles."""
+    """Ingest conversations.json → legion.claude-web.conversation bundles."""
     path = DUMP_DIR / "conversations.json"
     if not path.exists():
         print(f"  File not found: {path}")
@@ -180,7 +180,7 @@ def ingest_conversations(conn, dry_run: bool = False):
             stats["empty"] += 1
             continue
 
-        # RID: orn:legion.claude-conversation:{date}/{uuid-prefix}-{slug}
+        # RID: orn:legion.claude-web.conversation:{date}/{uuid-prefix}-{slug}
         created = convo.get("created_at", "")[:10]
         uuid_prefix = uuid[:8] if uuid else "0000"
         slug = slugify(name)
@@ -234,7 +234,7 @@ def ingest_conversations(conn, dry_run: bool = False):
 
 
 def ingest_projects(conn, dry_run: bool = False):
-    """Ingest projects.json → legion.claude-project bundles."""
+    """Ingest projects.json → legion.claude-web.project bundles."""
     path = DUMP_DIR / "projects.json"
     if not path.exists():
         print(f"  File not found: {path}")
@@ -305,7 +305,7 @@ def ingest_projects(conn, dry_run: bool = False):
 
 
 def ingest_memories(conn, dry_run: bool = False):
-    """Ingest memories.json → legion.claude-memory bundle."""
+    """Ingest memories.json → legion.claude-web.memory bundle."""
     path = DUMP_DIR / "memories.json"
     if not path.exists():
         print(f"  File not found: {path}")

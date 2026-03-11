@@ -196,7 +196,7 @@ def main():
             stats["empty"] += 1
             continue
 
-        # RID: orn:legion.claude-transcript:{date}/{session_id_prefix}
+        # RID: orn:legion.claude-code:{date}/{session_id_prefix}
         started = (contents.get("started_at") or "")[:10]
         reference = f"{started}/{session_id[:8]}"
         rid = f"orn:legion.claude-code:{reference}"
