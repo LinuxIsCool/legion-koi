@@ -8,7 +8,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionSession
+from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage
 
 
 class SensorConfig(BaseModel):
@@ -19,6 +19,12 @@ class SensorConfig(BaseModel):
     logging_db_path: str = "~/.claude/local/logging/-home-shawn/db/logging.db"
     logging_state_path: str = "./state/logging_state.json"
     logging_poll_interval: float = 60.0
+    recording_db_path: str = "~/.claude/local/recordings/recordings.db"
+    recording_state_path: str = "./state/recording_state.json"
+    recording_poll_interval: float = 120.0
+    message_db_path: str = "~/.claude/local/messages/messages.db"
+    message_state_path: str = "./state/message_state.json"
+    message_poll_interval: float = 60.0
 
 
 class PostgresConfig(BaseModel):
@@ -33,8 +39,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionJournal, LegionVenture, LegionRecording, LegionSession],
-                state=[LegionJournal, LegionVenture, LegionSession],
+                event=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage],
+                state=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),

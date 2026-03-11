@@ -22,11 +22,13 @@ class DatabaseSensor(ABC):
         state_path: Path,
         kobj_push: callable,
         poll_interval: float = 30.0,
+        batch_size: int = 0,
     ):
         self.db_path = Path(db_path).expanduser()
         self.state_path = Path(state_path)
         self.kobj_push = kobj_push
         self.poll_interval = poll_interval
+        self.batch_size = batch_size
         self.state = sensor_state.load(self.state_path)
         self._timer: threading.Timer | None = None
         self._running = False
@@ -45,8 +47,25 @@ class DatabaseSensor(ABC):
         ...
 
     def scan_all(self) -> list[Bundle]:
-        """Full scan — calls poll() which handles cursor tracking."""
-        return self.poll()
+        """Full scan — calls poll() repeatedly if batch_size > 0."""
+        if self.batch_size <= 0:
+            return self.poll()
+
+        all_bundles = []
+        total = 0
+        while True:
+            batch = self.poll()
+            if not batch:
+                break
+            all_bundles.extend(batch)
+            total += len(batch)
+            log.info(
+                "scan.progress",
+                sensor=self.__class__.__name__,
+                batch=len(batch),
+                total=total,
+            )
+        return all_bundles
 
     def _poll_loop(self):
         """Timer callback: poll, push bundles, save state, reschedule."""
