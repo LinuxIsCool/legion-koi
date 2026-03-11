@@ -10,7 +10,7 @@ from mcp.types import TextContent, Tool
 
 from .storage.postgres import PostgresStorage
 from .embeddings import create_embedder
-from .constants import RERANK_CANDIDATE_POOL
+from .constants import RERANK_CANDIDATE_POOL, PREVIEW_SHORT, PREVIEW_MEDIUM
 from .reranking import create_reranker, rerank_results
 
 app = Server("legion-koi")
@@ -77,7 +77,7 @@ def _format_results(results: list[dict]) -> str:
         elif ns == "legion.claude-message":
             sender = contents.get("sender_id", "")
             ts = (contents.get("platform_ts") or "")[:10]
-            content_preview = (contents.get("content") or "")[:150]
+            content_preview = (contents.get("content") or "")[:PREVIEW_SHORT]
             summary = f"[{sender}] {ts}: {content_preview}"
         elif ns == "legion.claude-journal":
             fm = contents.get("frontmatter", {})
@@ -92,7 +92,7 @@ def _format_results(results: list[dict]) -> str:
         elif ns == "legion.claude-web.project":
             summary = contents.get("name") or contents.get("description") or ""
         elif ns == "legion.claude-web.memory":
-            summary = (contents.get("conversations_memory") or "")[:200]
+            summary = (contents.get("conversations_memory") or "")[:PREVIEW_MEDIUM]
         elif ns == "legion.claude-code":
             summary = contents.get("summary") or contents.get("cwd") or ""
         elif ns == "legion.claude-github":
@@ -100,10 +100,10 @@ def _format_results(results: list[dict]) -> str:
             desc = contents.get("description") or ""
             summary = f"{name}: {desc}" if desc else name
         else:
-            summary = (r.get("search_text") or "")[:200]
+            summary = (r.get("search_text") or "")[:PREVIEW_MEDIUM]
 
-        if len(summary) > 200:
-            summary = summary[:200] + "..."
+        if len(summary) > PREVIEW_MEDIUM:
+            summary = summary[:PREVIEW_MEDIUM] + "..."
 
         score_label = "rrf" if "rrf_score" in r else "sim" if "similarity" in r else "rank"
         lines.append(

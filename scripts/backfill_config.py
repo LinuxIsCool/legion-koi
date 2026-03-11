@@ -37,7 +37,8 @@ sys.path.insert(0, "src")
 
 from legion_koi.chunking import chunk_text
 from legion_koi.contextual import extract_preamble, prepend_preamble
-from legion_koi.embeddings import create_embedder, _BATCH_SIZE
+from legion_koi.embeddings import create_embedder
+from legion_koi.constants import EMBED_BATCH_SIZE, MAX_RETRIES, RETRY_BACKOFF_SECONDS, CHUNK_CHARS
 from legion_koi.storage.postgres import PostgresStorage, _config_table_name
 
 DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
@@ -56,8 +57,7 @@ NAMESPACES_ORDER = [
     "legion.claude-github",
 ]
 
-MAX_RETRIES = 3
-RETRY_BACKOFF = [2, 5, 15]
+RETRY_BACKOFF = RETRY_BACKOFF_SECONDS
 
 # Junk text filters (base64 blobs, HTML doctype, binary hashes)
 JUNK_FILTERS = """
@@ -261,11 +261,11 @@ def main():
     parser.add_argument("--config", help="Config ID (e.g., telus-e5-1024, ollama-mxbai-1024)")
     parser.add_argument("--provider", choices=["telus", "ollama"], help="Embedding provider")
     parser.add_argument("--model", help="Model name")
-    parser.add_argument("--chunk-size", type=int, default=1600, help="Max chars per chunk (default: 1600)")
+    parser.add_argument("--chunk-size", type=int, default=CHUNK_CHARS, help=f"Max chars per chunk (default: {CHUNK_CHARS})")
     parser.add_argument("--description", default="", help="Config description")
     parser.add_argument("--default", action="store_true", help="Set as default config")
     parser.add_argument("--namespace", help="Only backfill this namespace")
-    parser.add_argument("--batch-size", type=int, default=_BATCH_SIZE, help="Chunks per API call")
+    parser.add_argument("--batch-size", type=int, default=EMBED_BATCH_SIZE, help="Chunks per API call")
     parser.add_argument("--fetch-size", type=int, default=100, help="DB fetch batch size (RIDs)")
     parser.add_argument("--dry-run", action="store_true", help="Count chunks without embedding")
     parser.add_argument("--rechunk", action="store_true",

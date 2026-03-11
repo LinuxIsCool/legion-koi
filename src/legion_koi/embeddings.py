@@ -12,12 +12,9 @@ from typing import Protocol
 import httpx
 import structlog
 
-log = structlog.stdlib.get_logger()
+from .constants import MAX_EMBED_CHARS, EMBED_BATCH_SIZE
 
-# Safety net for embedder input — chunks are pre-sized by chunking module (~1600 chars).
-# This truncation only fires if unchunked text is passed directly.
-_MAX_EMBED_CHARS = 2000
-_BATCH_SIZE = 20  # matches TS plugin's EMBED_BATCH_SIZE
+log = structlog.stdlib.get_logger()
 
 
 def _load_telus_env() -> dict[str, str]:
@@ -70,7 +67,7 @@ class TelusEmbedder:
         return self.embed_batch([text], input_type=input_type)[0]
 
     def embed_batch(self, texts: list[str], input_type: str = "passage") -> list[list[float]]:
-        truncated = [t[:_MAX_EMBED_CHARS] for t in texts]
+        truncated = [t[:MAX_EMBED_CHARS] for t in texts]
         resp = self._client.post(
             self._url,
             headers={"Authorization": f"Bearer {self._key}"},
@@ -123,7 +120,7 @@ class OllamaEmbedder:
     def embed(self, text: str, input_type: str = "passage") -> list[float]:
         resp = self._client.post(
             f"{self._base_url}/api/embeddings",
-            json={"model": self._model, "prompt": text[:_MAX_EMBED_CHARS]},
+            json={"model": self._model, "prompt": text[:MAX_EMBED_CHARS]},
         )
         resp.raise_for_status()
         vec = resp.json()["embedding"]

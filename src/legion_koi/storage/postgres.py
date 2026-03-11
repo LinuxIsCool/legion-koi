@@ -70,8 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_{table}_hnsw
 """
 
 
-# PostgreSQL tsvector max is 1MB; cap search_text well below that
-_MAX_SEARCH_TEXT = 500_000
+from ..constants import MAX_SEARCH_TEXT, RRF_K, RRF_FETCH_MULTIPLIER, DEFAULT_SEARCH_LIMIT, DEFAULT_THREAD_LIMIT
 
 
 def _extract_search_text(namespace: str, contents: dict) -> str:
@@ -103,11 +102,11 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         date_recorded = contents.get("date_recorded", "") or ""
         transcript = contents.get("transcript_text", "") or ""
         text = f"{filename} {source} {title} {notes} {date_recorded} {transcript}"
-        return text[:_MAX_SEARCH_TEXT]
+        return text[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-message":
         text = contents.get("content", "") or ""
-        return text[:_MAX_SEARCH_TEXT]
+        return text[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-web.conversation":
         parts = []
@@ -121,7 +120,7 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
             text = msg.get("text") or ""
             if text:
                 parts.append(text)
-        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+        return "\n".join(parts)[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-web.project":
         parts = []
@@ -141,14 +140,14 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
             content = doc.get("content") or ""
             if content:
                 parts.append(content)
-        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+        return "\n".join(parts)[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-web.memory":
         text = contents.get("conversations_memory", "")
         for _uuid, mem_text in contents.get("project_memories", {}).items():
             if isinstance(mem_text, str):
                 text += "\n" + mem_text
-        return text[:_MAX_SEARCH_TEXT]
+        return text[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-code":
         parts = []
@@ -158,7 +157,7 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         summary = contents.get("summary") or ""
         if summary:
             parts.append(summary)
-        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+        return "\n".join(parts)[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-github":
         parts = []
@@ -174,11 +173,11 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         readme = contents.get("readme_content") or ""
         if readme:
             parts.append(readme)
-        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+        return "\n".join(parts)[:MAX_SEARCH_TEXT]
 
     # Fallback: JSON dump
     text = json.dumps(contents)
-    return text[:_MAX_SEARCH_TEXT]
+    return text[:MAX_SEARCH_TEXT]
 
 
 class PostgresStorage:
@@ -283,7 +282,7 @@ class PostgresStorage:
         ).fetchone()
         return dict(row) if row else None
 
-    def search_text(self, query: str, namespace: str | None = None, limit: int = 20) -> list[dict]:
+    def search_text(self, query: str, namespace: str | None = None, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
         """Full-text search across bundles."""
         conn = self._get_conn()
         if namespace:
@@ -334,7 +333,7 @@ class PostgresStorage:
         ).fetchall()
         return {r["namespace"]: r["count"] for r in rows}
 
-    def get_thread_messages(self, thread_id: str, limit: int = 50) -> list[dict]:
+    def get_thread_messages(self, thread_id: str, limit: int = DEFAULT_THREAD_LIMIT) -> list[dict]:
         """Get messages in a thread, ordered by platform timestamp."""
         conn = self._get_conn()
         rows = conn.execute(
@@ -465,7 +464,7 @@ class PostgresStorage:
         conn.execute(f"DELETE FROM {table} WHERE rid = %s", (rid,))
 
     def search_config_semantic(
-        self, config_id: str, query_embedding: list[float], namespace: str | None = None, limit: int = 20
+        self, config_id: str, query_embedding: list[float], namespace: str | None = None, limit: int = DEFAULT_SEARCH_LIMIT
     ) -> list[dict]:
         """Semantic search against a specific embedding config.
 
@@ -520,11 +519,11 @@ class PostgresStorage:
         query: str,
         query_embedding: list[float],
         namespace: str | None = None,
-        limit: int = 20,
-        k: int = 60,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+        k: int = RRF_K,
     ) -> list[dict]:
         """Hybrid search against a specific embedding config using RRF."""
-        fetch = limit * 3
+        fetch = limit * RRF_FETCH_MULTIPLIER
         fts_results = self.search_text(query, namespace=namespace, limit=fetch)
         vec_results = self.search_config_semantic(config_id, query_embedding, namespace=namespace, limit=fetch)
 

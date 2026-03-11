@@ -12,12 +12,7 @@ Usage:
 
 import re
 
-# Target: 400 tokens ≈ 1600 chars (English avg ~4 chars/token)
-DEFAULT_CHUNK_CHARS = 1600
-DEFAULT_OVERLAP_CHARS = 400  # 25% overlap ≈ 100 tokens
-
-# Documents below this size produce a single chunk (no splitting)
-MIN_SPLIT_CHARS = 2000
+from .constants import CHUNK_CHARS, CHUNK_OVERLAP_CHARS, MIN_SPLIT_CHARS
 
 # Paragraph/sentence boundary pattern
 _SPLIT_RE = re.compile(r"\n{2,}|\n(?=#+\s)|(?<=[.!?])\s+")
@@ -25,8 +20,8 @@ _SPLIT_RE = re.compile(r"\n{2,}|\n(?=#+\s)|(?<=[.!?])\s+")
 
 def chunk_text(
     text: str,
-    chunk_chars: int = DEFAULT_CHUNK_CHARS,
-    overlap_chars: int = DEFAULT_OVERLAP_CHARS,
+    chunk_chars: int = CHUNK_CHARS,
+    overlap_chars: int = CHUNK_OVERLAP_CHARS,
 ) -> list[str]:
     """Split text into overlapping chunks at sentence/paragraph boundaries.
 
