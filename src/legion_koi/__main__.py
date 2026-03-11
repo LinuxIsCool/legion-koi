@@ -13,8 +13,6 @@ from .sensors.logging_sensor import LoggingSensor
 from .sensors.recording_sensor import RecordingSensor
 from .sensors.message_sensor import MessageSensor
 from .storage.postgres import PostgresStorage
-from .embeddings import get_embedder
-
 log = structlog.stdlib.get_logger()
 
 
@@ -85,15 +83,7 @@ def main():
     storage = None
     try:
         storage = PostgresStorage(dsn=node.config.postgres.dsn)
-        # Initialize with embedding dimension from auto-detected provider
-        try:
-            embedder = get_embedder()
-            embedding_dim = embedder.get_dimensions()
-            log.info("embedder.detected", model=embedder.get_model(), dimensions=embedding_dim)
-        except Exception:
-            embedding_dim = None
-            log.warning("embedder.unavailable", msg="Starting without embeddings")
-        storage.initialize(embedding_dim=embedding_dim)
+        storage.initialize()
         handlers._postgres_storage = storage
         log.info("postgres.connected")
     except Exception:

@@ -9,7 +9,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from .storage.postgres import PostgresStorage
-from .embeddings import embed_query, get_embedder, create_embedder
+from .embeddings import create_embedder
 
 app = Server("legion-koi")
 
@@ -17,11 +17,21 @@ _storage: PostgresStorage | None = None
 _config_embedders: dict[str, object] = {}
 
 
-def _embed_for_config(storage: PostgresStorage, config_id: str | None, query: str) -> list[float]:
-    """Embed a query using the right embedder for a config. Caches embedders."""
-    if not config_id:
-        return embed_query(query)
+def _resolve_config(storage: PostgresStorage, config_id: str | None) -> str:
+    """Resolve config_id — use explicit, or fall back to default config."""
+    if config_id:
+        return config_id
+    default = storage.get_default_config()
+    if default:
+        return default["config_id"]
+    configs = storage.list_embedding_configs()
+    if configs:
+        return configs[0]["config_id"]
+    raise ValueError("No embedding configs registered")
 
+
+def _embed_for_config(storage: PostgresStorage, config_id: str, query: str) -> list[float]:
+    """Embed a query using the right embedder for a config. Caches embedders."""
     if config_id not in _config_embedders:
         configs = storage.list_embedding_configs()
         cfg = next((c for c in configs if c["config_id"] == config_id), None)
@@ -224,7 +234,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "config": {
                         "type": "string",
-                        "description": "Embedding config ID (e.g. telus-e5-1024, ollama-mxbai-1024). Omit to use legacy table or default config.",
+                        "description": "Embedding config ID (e.g. telus-e5-1024, ollama-mxbai-1024). Omit to use default config.",
                     },
                     "limit": {
                         "type": "integer",
@@ -251,7 +261,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "config": {
                         "type": "string",
-                        "description": "Embedding config ID (e.g. telus-e5-1024, ollama-mxbai-1024). Omit to use legacy table or default config.",
+                        "description": "Embedding config ID (e.g. telus-e5-1024, ollama-mxbai-1024). Omit to use default config.",
                     },
                     "limit": {
                         "type": "integer",
@@ -327,47 +337,32 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=_format_rid_list(rids[:limit]))]
 
     elif name == "semantic_search":
-        config_id = arguments.get("config")
         try:
+            config_id = _resolve_config(storage, arguments.get("config"))
             query_vec = _embed_for_config(storage, config_id, arguments["query"])
-            if config_id:
-                results = storage.search_config_semantic(
-                    config_id=config_id,
-                    query_embedding=query_vec,
-                    namespace=arguments.get("namespace"),
-                    limit=arguments.get("limit", 20),
-                )
-            else:
-                results = storage.search_semantic(
-                    query_embedding=query_vec,
-                    namespace=arguments.get("namespace"),
-                    limit=arguments.get("limit", 20),
-                )
-            header = f"[config: {config_id or 'legacy'}]\n\n" if config_id else ""
+            results = storage.search_config_semantic(
+                config_id=config_id,
+                query_embedding=query_vec,
+                namespace=arguments.get("namespace"),
+                limit=arguments.get("limit", 20),
+            )
+            header = f"[config: {config_id}]\n\n"
             return [TextContent(type="text", text=header + _format_results(results))]
         except Exception as e:
             return [TextContent(type="text", text=f"Semantic search error: {e}")]
 
     elif name == "hybrid_search":
-        config_id = arguments.get("config")
         try:
+            config_id = _resolve_config(storage, arguments.get("config"))
             query_vec = _embed_for_config(storage, config_id, arguments["query"])
-            if config_id:
-                results = storage.search_config_hybrid(
-                    config_id=config_id,
-                    query=arguments["query"],
-                    query_embedding=query_vec,
-                    namespace=arguments.get("namespace"),
-                    limit=arguments.get("limit", 20),
-                )
-            else:
-                results = storage.search_hybrid(
-                    query=arguments["query"],
-                    query_embedding=query_vec,
-                    namespace=arguments.get("namespace"),
-                    limit=arguments.get("limit", 20),
-                )
-            header = f"[config: {config_id or 'legacy'}]\n\n" if config_id else ""
+            results = storage.search_config_hybrid(
+                config_id=config_id,
+                query=arguments["query"],
+                query_embedding=query_vec,
+                namespace=arguments.get("namespace"),
+                limit=arguments.get("limit", 20),
+            )
+            header = f"[config: {config_id}]\n\n"
             return [TextContent(type="text", text=header + _format_results(results))]
         except Exception as e:
             # Fall back to FTS-only if embedding fails
@@ -381,20 +376,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     elif name == "koi_stats":
         stats = storage.get_stats()
-        embedding_stats = storage.get_embedding_stats()
         config_stats = storage.get_config_stats()
         configs = storage.list_embedding_configs()
-        try:
-            embedder = get_embedder()
-            model_info = {"model": embedder.get_model(), "dimensions": embedder.get_dimensions()}
-        except Exception:
-            model_info = {"model": "unavailable"}
         output = {
             "bundles": stats,
-            "legacy_embeddings": embedding_stats,
             "embedding_configs": configs,
             "config_embeddings": config_stats,
-            "active_embedder": model_info,
         }
         return [TextContent(type="text", text=json.dumps(output, indent=2, default=str))]
 

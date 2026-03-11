@@ -79,25 +79,28 @@ def discover(storage: PostgresStorage, query: str, limit: int = 20):
             continue
 
     if embedding is not None:
-        # Semantic
-        try:
-            sem_results = storage.search_semantic(embedding, limit=limit)
-            for i, r in enumerate(sem_results):
-                rid = r["rid"]
-                score = r.get("similarity", 0)
-                if rid not in all_results or score > all_results[rid]["score"]:
-                    preview = (r.get("search_text") or "")[:120].replace("\n", " ")
-                    all_results[rid] = {
-                        "score": score,
-                        "source": "semantic",
-                        "namespace": r.get("namespace", ""),
-                        "preview": preview,
-                        "position": i,
-                    }
-        except Exception as e:
-            print(f"  Semantic search failed: {e}")
+        # Semantic (first available config)
+        if configs:
+            try:
+                sem_results = storage.search_config_semantic(
+                    configs[0]["config_id"], embedding, limit=limit
+                )
+                for i, r in enumerate(sem_results):
+                    rid = r["rid"]
+                    score = r.get("similarity", 0)
+                    if rid not in all_results or score > all_results[rid]["score"]:
+                        preview = (r.get("search_text") or "")[:120].replace("\n", " ")
+                        all_results[rid] = {
+                            "score": score,
+                            "source": f"semantic/{configs[0]['config_id']}",
+                            "namespace": r.get("namespace", ""),
+                            "preview": preview,
+                            "position": i,
+                        }
+            except Exception as e:
+                print(f"  Semantic search failed: {e}")
 
-        # Hybrid (config-based)
+        # Hybrid (all configs)
         for cfg in configs:
             try:
                 cfg_embedder = create_embedder(provider=cfg["provider"], model=cfg["model"])

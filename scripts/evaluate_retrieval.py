@@ -181,20 +181,7 @@ def build_eval_matrix(
                 "label": "fts",
             })
         elif mode in ("semantic", "hybrid"):
-            # Legacy embeddings (single-table)
-            if "legacy" in config_ids:
-                combos.append({
-                    "mode": mode,
-                    "config_id": "legacy",
-                    "provider": None,
-                    "model": None,
-                    "label": f"{mode}/legacy",
-                })
-
-            # Per-config embeddings
             for cid in config_ids:
-                if cid == "legacy":
-                    continue
                 if cid not in config_map:
                     print(f"  WARN: config '{cid}' not found in DB, skipping")
                     continue
@@ -230,17 +217,11 @@ def run_search(
         elif mode == "semantic":
             if embedding is None:
                 return []
-            if config_id == "legacy":
-                results = storage.search_semantic(embedding, limit=limit)
-            else:
-                results = storage.search_config_semantic(config_id, embedding, limit=limit)
+            results = storage.search_config_semantic(config_id, embedding, limit=limit)
         elif mode == "hybrid":
             if embedding is None:
                 return []
-            if config_id == "legacy":
-                results = storage.search_hybrid(query, embedding, limit=limit)
-            else:
-                results = storage.search_config_hybrid(config_id, query, embedding, limit=limit)
+            results = storage.search_config_hybrid(config_id, query, embedding, limit=limit)
         else:
             return []
     except Exception as e:
@@ -282,13 +263,7 @@ def evaluate(
             # Get embedding if needed
             embedding = None
             if combo["mode"] in ("semantic", "hybrid"):
-                if combo["config_id"] == "legacy":
-                    # Legacy uses default embedder
-                    embedding = embed_cache.get_or_embed(
-                        provider or "telus", model or "default", query_text
-                    )
-                else:
-                    embedding = embed_cache.get_or_embed(provider, model, query_text)
+                embedding = embed_cache.get_or_embed(provider, model, query_text)
 
                 if embedding is None and combo["mode"] == "semantic":
                     per_query.append({
@@ -533,7 +508,7 @@ def main():
     parser.add_argument("--modes", type=str, default=None,
                         help="Comma-separated search modes: fts,semantic,hybrid (default: all)")
     parser.add_argument("--configs", type=str, default=None,
-                        help="Comma-separated config IDs (default: all registered + legacy)")
+                        help="Comma-separated config IDs (default: all registered)")
     parser.add_argument("--k", type=str, default="5,10,20",
                         help="Comma-separated K values for Recall@K (default: 5,10,20)")
     parser.add_argument("--limit", type=int, default=20,
@@ -586,10 +561,6 @@ def main():
 
     if args.configs:
         config_ids = [c.strip() for c in args.configs.split(",")]
-    else:
-        # Add legacy to the list if not already
-        if "legacy" not in config_ids:
-            config_ids.append("legacy")
 
     print(f"Modes: {modes}")
     print(f"Configs: {config_ids}")

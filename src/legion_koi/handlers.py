@@ -111,44 +111,31 @@ class VentureBundleHandler(KnowledgeHandler):
 
 
 def _embed_bundle(rid: str, namespace: str, contents: dict) -> None:
-    """Embed a bundle's search text into legacy table + all active configs. Best-effort."""
+    """Embed a bundle's search text into all active config tables. Best-effort."""
     if _postgres_storage is None:
         return
     try:
-        from .embeddings import embed_texts, get_embedder, create_embedder
+        from .embeddings import create_embedder
 
         search_text = _extract_search_text(namespace, contents)
         if not search_text or not search_text.strip():
             return
 
-        # Legacy table — uses the default embedder
-        vectors = embed_texts([search_text], input_type="passage")
-        embedder = get_embedder()
-        _postgres_storage.upsert_embedding(
-            rid=rid,
-            embedding=vectors[0],
-            model=embedder.get_model(),
-        )
-
-        # Config-based tables — embed into each registered config
-        try:
-            configs = _postgres_storage.list_embedding_configs()
-            for cfg in configs:
-                try:
-                    cfg_embedder = create_embedder(
-                        provider=cfg["provider"], model=cfg["model"]
-                    )
-                    vec = cfg_embedder.embed(search_text, input_type="passage")
-                    _postgres_storage.upsert_config_embedding(
-                        config_id=cfg["config_id"],
-                        rid=rid,
-                        embedding=vec,
-                        chunk_text=search_text[:200],
-                    )
-                except Exception:
-                    slog.debug("embedding.config_inline_skip", rid=rid, config=cfg["config_id"])
-        except Exception:
-            pass  # Config system not available — legacy-only is fine
+        configs = _postgres_storage.list_embedding_configs()
+        for cfg in configs:
+            try:
+                cfg_embedder = create_embedder(
+                    provider=cfg["provider"], model=cfg["model"]
+                )
+                vec = cfg_embedder.embed(search_text, input_type="passage")
+                _postgres_storage.upsert_config_embedding(
+                    config_id=cfg["config_id"],
+                    rid=rid,
+                    embedding=vec,
+                    chunk_text=search_text[:200],
+                )
+            except Exception:
+                slog.debug("embedding.config_inline_skip", rid=rid, config=cfg["config_id"])
     except Exception:
         slog.warning("embedding.inline_error", rid=rid, exc_info=True)
 

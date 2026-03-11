@@ -70,22 +70,6 @@ CREATE INDEX IF NOT EXISTS idx_{table}_hnsw
 """
 
 
-# Legacy single-table support (kept for migration path)
-def _embeddings_sql(dimension: int) -> str:
-    """Generate legacy embeddings table DDL with parameterized vector dimension."""
-    return f"""
-CREATE TABLE IF NOT EXISTS embeddings (
-    rid TEXT PRIMARY KEY REFERENCES bundles(rid) ON DELETE CASCADE,
-    embedding vector({dimension}),
-    model TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw
-    ON embeddings USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
-"""
-
-
 # PostgreSQL tsvector max is 1MB; cap search_text well below that
 _MAX_SEARCH_TEXT = 500_000
 
@@ -207,51 +191,18 @@ class PostgresStorage:
             self._conn = psycopg.connect(self.dsn, row_factory=dict_row, autocommit=True)
         return self._conn
 
-    def initialize(self, embedding_dim: int | None = None):
-        """Create tables and indexes. If embedding_dim is provided, create/migrate legacy embeddings table."""
+    def initialize(self):
+        """Create tables and indexes."""
         conn = self._get_conn()
         conn.execute(SCHEMA_SQL)
 
-        # Always create the config registry
         try:
             conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         except psycopg.errors.InsufficientPrivilege:
             pass
         conn.execute(EMBEDDING_CONFIGS_SQL)
 
-        if embedding_dim is not None:
-            self._ensure_embeddings_table(conn, embedding_dim)
-
-        log.info("postgres.initialized", embedding_dim=embedding_dim)
-
-    def _ensure_embeddings_table(self, conn: psycopg.Connection, dimension: int):
-        """Create or migrate embeddings table to match the target vector dimension."""
-        try:
-            conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        except psycopg.errors.InsufficientPrivilege:
-            log.warning("postgres.pgvector_extension_skip", msg="Already exists or no perms")
-            conn.rollback() if not conn.autocommit else None
-
-        # Check if table exists and has correct dimension
-        row = conn.execute(
-            """
-            SELECT atttypmod FROM pg_attribute
-            WHERE attrelid = 'embeddings'::regclass AND attname = 'embedding'
-            """,
-        ).fetchone()
-
-        if row is not None:
-            # pgvector stores dimension directly in atttypmod
-            current_dim = row["atttypmod"] if row["atttypmod"] > 0 else None
-            if current_dim == dimension:
-                log.info("postgres.embeddings_table_ok", dimension=dimension)
-                return
-            log.info("postgres.embeddings_dimension_mismatch",
-                     current=current_dim, target=dimension, action="recreate")
-            conn.execute("DROP TABLE IF EXISTS embeddings")
-
-        conn.execute(_embeddings_sql(dimension))
-        log.info("postgres.embeddings_table_created", dimension=dimension)
+        log.info("postgres.initialized")
 
     def upsert_bundle(
         self,
@@ -405,164 +356,6 @@ class PostgresStorage:
     def _vec_literal(embedding: list[float]) -> str:
         """Format embedding as pgvector string literal."""
         return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
-
-    def upsert_embedding(self, rid: str, embedding: list[float], model: str):
-        """Insert or update a single embedding."""
-        conn = self._get_conn()
-        conn.execute(
-            """
-            INSERT INTO embeddings (rid, embedding, model)
-            VALUES (%s, %s::vector, %s)
-            ON CONFLICT (rid) DO UPDATE SET
-                embedding = EXCLUDED.embedding,
-                model = EXCLUDED.model,
-                created_at = NOW()
-            """,
-            (rid, self._vec_literal(embedding), model),
-        )
-
-    def upsert_embeddings_batch(self, items: list[dict]):
-        """Bulk upsert embeddings. Each dict: {rid, embedding, model}."""
-        if not items:
-            return
-        conn = self._get_conn()
-        with conn.transaction():
-            with conn.cursor() as cur:
-                for item in items:
-                    cur.execute(
-                        """
-                        INSERT INTO embeddings (rid, embedding, model)
-                        VALUES (%s, %s::vector, %s)
-                        ON CONFLICT (rid) DO UPDATE SET
-                            embedding = EXCLUDED.embedding,
-                            model = EXCLUDED.model,
-                            created_at = NOW()
-                        """,
-                        (item["rid"], self._vec_literal(item["embedding"]), item["model"]),
-                    )
-
-    def search_semantic(
-        self, query_embedding: list[float], namespace: str | None = None, limit: int = 20
-    ) -> list[dict]:
-        """Pure vector similarity search using cosine distance."""
-        conn = self._get_conn()
-        vec = self._vec_literal(query_embedding)
-        if namespace:
-            rows = conn.execute(
-                """
-                SELECT b.rid, b.namespace, b.reference, b.contents, b.search_text,
-                       1 - (e.embedding <=> %s::vector) AS similarity
-                FROM embeddings e
-                JOIN bundles b ON b.rid = e.rid
-                WHERE b.namespace = %s
-                ORDER BY e.embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (vec, namespace, vec, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT b.rid, b.namespace, b.reference, b.contents, b.search_text,
-                       1 - (e.embedding <=> %s::vector) AS similarity
-                FROM embeddings e
-                JOIN bundles b ON b.rid = e.rid
-                ORDER BY e.embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (vec, vec, limit),
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-    def search_hybrid(
-        self,
-        query: str,
-        query_embedding: list[float],
-        namespace: str | None = None,
-        limit: int = 20,
-        k: int = 60,
-    ) -> list[dict]:
-        """Hybrid search: Reciprocal Rank Fusion of FTS + vector results.
-
-        RRF score = 1/(k + fts_rank) + 1/(k + vec_rank) per result.
-        k=60 is the standard RRF constant (balances head vs tail).
-        """
-        # Get both result sets (fetch more than limit for better fusion)
-        fetch = limit * 3
-        fts_results = self.search_text(query, namespace=namespace, limit=fetch)
-        vec_results = self.search_semantic(query_embedding, namespace=namespace, limit=fetch)
-
-        # Build RRF scores
-        scores: dict[str, float] = {}
-        bundle_map: dict[str, dict] = {}
-
-        for rank, r in enumerate(fts_results, 1):
-            rid = r["rid"]
-            scores[rid] = scores.get(rid, 0) + 1.0 / (k + rank)
-            bundle_map[rid] = r
-
-        for rank, r in enumerate(vec_results, 1):
-            rid = r["rid"]
-            scores[rid] = scores.get(rid, 0) + 1.0 / (k + rank)
-            if rid not in bundle_map:
-                bundle_map[rid] = r
-
-        # Sort by RRF score, return top results
-        sorted_rids = sorted(scores, key=lambda rid: scores[rid], reverse=True)[:limit]
-        results = []
-        for rid in sorted_rids:
-            r = bundle_map[rid]
-            r["rrf_score"] = scores[rid]
-            results.append(r)
-        return results
-
-    def get_embedding_stats(self) -> dict:
-        """Embedding coverage per namespace, grouped by model."""
-        conn = self._get_conn()
-        rows = conn.execute(
-            """
-            SELECT b.namespace,
-                   count(b.rid) AS total,
-                   count(e.rid) AS embedded,
-                   e.model
-            FROM bundles b
-            LEFT JOIN embeddings e ON b.rid = e.rid
-            GROUP BY b.namespace, e.model
-            ORDER BY b.namespace
-            """
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    def get_unembedded_rids(self, namespace: str | None = None, limit: int = 500) -> list[dict]:
-        """Find bundles that don't have embeddings yet."""
-        conn = self._get_conn()
-        if namespace:
-            rows = conn.execute(
-                """
-                SELECT b.rid, b.namespace, b.search_text
-                FROM bundles b
-                LEFT JOIN embeddings e ON b.rid = e.rid
-                WHERE e.rid IS NULL AND b.namespace = %s
-                ORDER BY b.created_at
-                LIMIT %s
-                """,
-                (namespace, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT b.rid, b.namespace, b.search_text
-                FROM bundles b
-                LEFT JOIN embeddings e ON b.rid = e.rid
-                WHERE e.rid IS NULL
-                ORDER BY b.created_at
-                LIMIT %s
-                """,
-                (limit,),
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-    # -- Multi-config embedding methods --
 
     def register_embedding_config(
         self,
