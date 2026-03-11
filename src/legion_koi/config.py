@@ -1,5 +1,6 @@
 """Legion KOI-net node configuration."""
 
+import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -16,7 +17,7 @@ class SensorConfig(BaseModel):
     journal_state_path: str = "./state/journal_state.json"
     venture_watch_dir: str = "~/legion-brain/local/ventures/"
     venture_state_path: str = "./state/venture_state.json"
-    logging_db_path: str = "~/.claude/local/logging/-home-shawn/db/logging.db"
+    logging_db_path: str = "~/.claude/local/logging/db/logging.db"
     logging_state_path: str = "./state/logging_state.json"
     logging_poll_interval: float = 60.0
     recording_db_path: str = "~/.claude/local/recordings/recordings.db"
@@ -28,7 +29,9 @@ class SensorConfig(BaseModel):
 
 
 class PostgresConfig(BaseModel):
-    dsn: str = "postgresql://shawn@localhost/personal_koi"
+    dsn: str = Field(default_factory=lambda: os.environ.get(
+        "LEGION_KOI_DSN", "postgresql://localhost/personal_koi"
+    ))
 
 
 class LegionKoiConfig(FullNodeConfig):

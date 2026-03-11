@@ -18,3 +18,4 @@ config.yaml
 *.ndjson
 dropped_logs.txt
 .letta/
+log.ndjson.*

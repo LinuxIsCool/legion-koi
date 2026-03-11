@@ -16,6 +16,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -29,8 +30,10 @@ sys.path.insert(0, "src")
 
 from legion_koi.storage.postgres import _extract_search_text
 
-DSN = "postgresql://shawn@localhost/personal_koi"
-DUMP_DIR = Path("~/Workspace/knowledge-archive/claude-web-dump").expanduser()
+DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
+DUMP_DIR = Path(
+    os.environ.get("LEGION_KOI_CLAUDE_WEB_DIR", "~/Workspace/knowledge-archive/claude-web-dump")
+).expanduser()
 
 # PostgreSQL tsvector max is 1MB; cap well below
 _MAX_SEARCH_TEXT = 500_000

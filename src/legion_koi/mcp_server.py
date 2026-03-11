@@ -39,7 +39,7 @@ def _get_storage() -> PostgresStorage:
     global _storage
     if _storage is None:
         dsn = os.environ.get(
-            "LEGION_KOI_DSN", "postgresql://shawn@localhost/personal_koi"
+            "LEGION_KOI_DSN", "postgresql://localhost/personal_koi"
         )
         _storage = PostgresStorage(dsn=dsn)
     return _storage

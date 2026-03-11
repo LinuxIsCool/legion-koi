@@ -1,19 +1,19 @@
 #!/usr/bin/env -S python3 -u
-"""Ingest GitHub repos for LinuxIsCool into PostgreSQL.
+"""Ingest GitHub repos into PostgreSQL.
 
 One bundle per repo in legion.claude-github.
-Uses `gh` CLI (already authenticated) via subprocess.
+Uses `gh` CLI (must be authenticated) via subprocess.
 
 Usage:
-    uv run python scripts/ingest_github.py
-    uv run python scripts/ingest_github.py --dry-run
-    uv run python scripts/ingest_github.py --owner LinuxIsCool
+    uv run python scripts/ingest_github.py --owner <github-user>
+    uv run python scripts/ingest_github.py --owner <github-user> --dry-run
 """
 
 import argparse
 import base64
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -27,7 +27,7 @@ sys.path.insert(0, "src")
 
 from legion_koi.storage.postgres import _extract_search_text
 
-DSN = "postgresql://shawn@localhost/personal_koi"
+DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
 NAMESPACE = "legion.claude-github"
 
 
@@ -168,7 +168,7 @@ def build_contents(repo: dict, owner: str, readme: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Ingest GitHub repos into legion-koi")
-    parser.add_argument("--owner", default="LinuxIsCool", help="GitHub owner/org")
+    parser.add_argument("--owner", required=True, help="GitHub owner/org")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 import time
 
@@ -22,7 +23,7 @@ sys.path.insert(0, "src")
 from legion_koi.embeddings import create_embedder, _BATCH_SIZE
 
 
-DSN = "postgresql://shawn@localhost/personal_koi"
+DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
 
 NAMESPACES_ORDER = [
     "koi-net.node",

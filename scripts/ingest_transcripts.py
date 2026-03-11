@@ -13,6 +13,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -24,8 +25,10 @@ from psycopg.types.json import Jsonb
 
 sys.path.insert(0, "src")
 
-DSN = "postgresql://shawn@localhost/personal_koi"
-TRANSCRIPT_DIR = Path("~/.claude/projects/-home-shawn").expanduser()
+DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
+TRANSCRIPT_DIR = Path(
+    os.environ.get("LEGION_KOI_TRANSCRIPT_DIR", "~/.claude/projects")
+).expanduser()
 
 # PostgreSQL tsvector max is 1MB; cap well below
 _MAX_SEARCH_TEXT = 500_000

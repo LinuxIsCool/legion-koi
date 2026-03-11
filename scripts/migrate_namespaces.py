@@ -17,12 +17,13 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 
 import psycopg
 from psycopg.rows import dict_row
 
-DSN = "postgresql://shawn@localhost/personal_koi"
+DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
 
 # (old_namespace, new_namespace, old_orn_prefix, new_orn_prefix)
 RENAMES = [
