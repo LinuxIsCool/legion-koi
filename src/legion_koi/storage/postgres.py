@@ -106,7 +106,7 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         tags = " ".join(fm.get("tags", []))
         return f"{title} {description} {body} {tags}"
 
-    if namespace == "legion.claude-session":
+    if namespace == "legion.claude-logging":
         cwd = contents.get("cwd", "") or ""
         summary = contents.get("summary", "") or ""
         return f"{cwd} {summary}"
@@ -125,7 +125,7 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         text = contents.get("content", "") or ""
         return text[:_MAX_SEARCH_TEXT]
 
-    if namespace == "legion.claude-conversation":
+    if namespace == "legion.claude-web.conversation":
         parts = []
         name = contents.get("name") or ""
         if name:
@@ -139,7 +139,7 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
                 parts.append(text)
         return "\n".join(parts)[:_MAX_SEARCH_TEXT]
 
-    if namespace == "legion.claude-project":
+    if namespace == "legion.claude-web.project":
         parts = []
         name = contents.get("name") or ""
         if name:
@@ -159,14 +159,14 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
                 parts.append(content)
         return "\n".join(parts)[:_MAX_SEARCH_TEXT]
 
-    if namespace == "legion.claude-memory":
+    if namespace == "legion.claude-web.memory":
         text = contents.get("conversations_memory", "")
         for _uuid, mem_text in contents.get("project_memories", {}).items():
             if isinstance(mem_text, str):
                 text += "\n" + mem_text
         return text[:_MAX_SEARCH_TEXT]
 
-    if namespace == "legion.claude-transcript":
+    if namespace == "legion.claude-code":
         parts = []
         cwd = contents.get("cwd") or ""
         if cwd:
@@ -174,6 +174,22 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         summary = contents.get("summary") or ""
         if summary:
             parts.append(summary)
+        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+
+    if namespace == "legion.claude-github":
+        parts = []
+        name = contents.get("name") or ""
+        if name:
+            parts.append(name)
+        desc = contents.get("description") or ""
+        if desc:
+            parts.append(desc)
+        topics = contents.get("topics") or []
+        if topics:
+            parts.append(" ".join(topics))
+        readme = contents.get("readme_content") or ""
+        if readme:
+            parts.append(readme)
         return "\n".join(parts)[:_MAX_SEARCH_TEXT]
 
     # Fallback: JSON dump

@@ -73,8 +73,20 @@ def _format_results(results: list[dict]) -> str:
         elif ns == "legion.claude-venture":
             fm = contents.get("frontmatter", {})
             summary = fm.get("title", "")
-        elif ns == "legion.claude-session":
+        elif ns == "legion.claude-logging":
             summary = contents.get("summary") or contents.get("cwd", "")
+        elif ns == "legion.claude-web.conversation":
+            summary = contents.get("name") or contents.get("summary") or ""
+        elif ns == "legion.claude-web.project":
+            summary = contents.get("name") or contents.get("description") or ""
+        elif ns == "legion.claude-web.memory":
+            summary = (contents.get("conversations_memory") or "")[:200]
+        elif ns == "legion.claude-code":
+            summary = contents.get("summary") or contents.get("cwd") or ""
+        elif ns == "legion.claude-github":
+            name = contents.get("name") or ""
+            desc = contents.get("description") or ""
+            summary = f"{name}: {desc}" if desc else name
         else:
             summary = (r.get("search_text") or "")[:200]
 
@@ -110,7 +122,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_bundles",
-            description="Full-text search across all knowledge bundles (journals, ventures, recordings, messages, sessions).",
+            description="Full-text search across all knowledge bundles (journals, ventures, recordings, messages, conversations, transcripts, GitHub repos).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -120,7 +132,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "namespace": {
                         "type": "string",
-                        "description": "Optional namespace filter: legion.claude-journal, legion.claude-venture, legion.claude-recording, legion.claude-message, legion.claude-session",
+                        "description": "Optional namespace filter: legion.claude-journal, legion.claude-venture, legion.claude-recording, legion.claude-message, legion.claude-logging, legion.claude-web.conversation, legion.claude-web.project, legion.claude-web.memory, legion.claude-code, legion.claude-github",
                     },
                     "limit": {
                         "type": "integer",

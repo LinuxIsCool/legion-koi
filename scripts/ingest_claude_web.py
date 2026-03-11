@@ -2,9 +2,9 @@
 """Ingest Claude Web export (conversations, projects, memories) into PostgreSQL.
 
 Bulk direct-to-PostgreSQL ingestion — same pattern as Phase 2b/2c.
-Each conversation → 1 bundle in legion.claude-conversation.
-Each project → 1 bundle in legion.claude-project.
-Memories → 1 bundle in legion.claude-memory.
+Each conversation → 1 bundle in legion.claude-web.conversation.
+Each project → 1 bundle in legion.claude-web.project.
+Memories → 1 bundle in legion.claude-web.memory.
 
 Usage:
     uv run python scripts/ingest_claude_web.py
@@ -164,7 +164,7 @@ def ingest_conversations(conn, dry_run: bool = False):
     # Check existing
     existing = set()
     rows = conn.execute(
-        "SELECT rid FROM bundles WHERE namespace = 'legion.claude-conversation'"
+        "SELECT rid FROM bundles WHERE namespace = 'legion.claude-web.conversation'"
     ).fetchall()
     existing = {r["rid"] for r in rows}
     print(f"  Already ingested: {len(existing)}")
@@ -185,7 +185,7 @@ def ingest_conversations(conn, dry_run: bool = False):
         uuid_prefix = uuid[:8] if uuid else "0000"
         slug = slugify(name)
         reference = f"{created}/{uuid_prefix}-{slug}"
-        rid = f"orn:legion.claude-conversation:{reference}"
+        rid = f"orn:legion.claude-web.conversation:{reference}"
 
         contents = build_conversation_contents(convo)
         search_text = extract_conversation_search_text(convo)
@@ -215,7 +215,7 @@ def ingest_conversations(conn, dry_run: bool = False):
                     sha256_hash = EXCLUDED.sha256_hash,
                     updated_at = NOW()
                 """,
-                (rid, "legion.claude-conversation", reference, Jsonb(contents),
+                (rid, "legion.claude-web.conversation", reference, Jsonb(contents),
                  search_text, content_hash, created_at),
             )
             if rid in existing:
@@ -247,7 +247,7 @@ def ingest_projects(conn, dry_run: bool = False):
 
     existing = set()
     rows = conn.execute(
-        "SELECT rid FROM bundles WHERE namespace = 'legion.claude-project'"
+        "SELECT rid FROM bundles WHERE namespace = 'legion.claude-web.project'"
     ).fetchall()
     existing = {r["rid"] for r in rows}
     print(f"  Already ingested: {len(existing)}")
@@ -260,7 +260,7 @@ def ingest_projects(conn, dry_run: bool = False):
         uuid_prefix = uuid[:8] if uuid else "0000"
         slug = slugify(name)
         reference = f"{uuid_prefix}-{slug}"
-        rid = f"orn:legion.claude-project:{reference}"
+        rid = f"orn:legion.claude-web.project:{reference}"
 
         contents = build_project_contents(project)
         search_text = extract_project_search_text(project)
@@ -290,7 +290,7 @@ def ingest_projects(conn, dry_run: bool = False):
                     sha256_hash = EXCLUDED.sha256_hash,
                     updated_at = NOW()
                 """,
-                (rid, "legion.claude-project", reference, Jsonb(contents),
+                (rid, "legion.claude-web.project", reference, Jsonb(contents),
                  search_text, content_hash, created_at),
             )
             if rid in existing:
@@ -337,7 +337,7 @@ def ingest_memories(conn, dry_run: bool = False):
             search_text += "\n" + text
     search_text = search_text[:_MAX_SEARCH_TEXT]
 
-    rid = "orn:legion.claude-memory:claude-web-export"
+    rid = "orn:legion.claude-web.memory:claude-web-export"
     reference = "claude-web-export"
     content_hash = sha256(json.dumps(contents, sort_keys=True, default=str))
 
@@ -355,7 +355,7 @@ def ingest_memories(conn, dry_run: bool = False):
             sha256_hash = EXCLUDED.sha256_hash,
             updated_at = NOW()
         """,
-        (rid, "legion.claude-memory", reference, Jsonb(contents),
+        (rid, "legion.claude-web.memory", reference, Jsonb(contents),
          search_text, content_hash),
     )
     print("  Done: 1 memory bundle upserted")
@@ -394,7 +394,7 @@ def main():
     row = conn.execute(
         """
         SELECT namespace, count(*) AS cnt FROM bundles
-        WHERE namespace IN ('legion.claude-conversation', 'legion.claude-project', 'legion.claude-memory')
+        WHERE namespace IN ('legion.claude-web.conversation', 'legion.claude-web.project', 'legion.claude-web.memory')
         GROUP BY namespace ORDER BY namespace
         """
     ).fetchall()

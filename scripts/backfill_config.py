@@ -36,12 +36,17 @@ from legion_koi.storage.postgres import PostgresStorage, _config_table_name
 DSN = "postgresql://shawn@localhost/personal_koi"
 
 NAMESPACES_ORDER = [
-    "legion.claude-node",
+    "koi-net.node",
     "legion.claude-venture",
-    "legion.claude-session",
+    "legion.claude-logging",
     "legion.claude-journal",
     "legion.claude-recording",
     "legion.claude-message",
+    "legion.claude-web.conversation",
+    "legion.claude-web.project",
+    "legion.claude-web.memory",
+    "legion.claude-code",
+    "legion.claude-github",
 ]
 
 MAX_RETRIES = 3

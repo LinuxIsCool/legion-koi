@@ -25,12 +25,17 @@ from legion_koi.embeddings import create_embedder, _BATCH_SIZE
 DSN = "postgresql://shawn@localhost/personal_koi"
 
 NAMESPACES_ORDER = [
-    "legion.claude-node",
+    "koi-net.node",
     "legion.claude-venture",
-    "legion.claude-session",
+    "legion.claude-logging",
     "legion.claude-journal",
     "legion.claude-recording",
     "legion.claude-message",
+    "legion.claude-web.conversation",
+    "legion.claude-web.project",
+    "legion.claude-web.memory",
+    "legion.claude-code",
+    "legion.claude-github",
 ]
 
 MAX_RETRIES = 3

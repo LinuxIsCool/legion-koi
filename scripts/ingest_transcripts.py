@@ -1,7 +1,7 @@
 #!/usr/bin/env -S python3 -u
 """Ingest native Claude Code session transcripts into PostgreSQL.
 
-Each .jsonl file = one session = one bundle in legion.claude-transcript.
+Each .jsonl file = one session = one bundle in legion.claude-code.
 Extracts user messages + assistant text blocks as search text.
 Skips tool_use blocks, file-history-snapshot, and progress events.
 
@@ -171,7 +171,7 @@ def main():
     # Check existing
     existing = set()
     rows = conn.execute(
-        "SELECT rid FROM bundles WHERE namespace = 'legion.claude-transcript'"
+        "SELECT rid FROM bundles WHERE namespace = 'legion.claude-code'"
     ).fetchall()
     existing = {r["rid"] for r in rows}
     print(f"Already ingested: {len(existing)}")
@@ -199,7 +199,7 @@ def main():
         # RID: orn:legion.claude-transcript:{date}/{session_id_prefix}
         started = (contents.get("started_at") or "")[:10]
         reference = f"{started}/{session_id[:8]}"
-        rid = f"orn:legion.claude-transcript:{reference}"
+        rid = f"orn:legion.claude-code:{reference}"
         content_hash = sha256(json.dumps(contents, sort_keys=True, default=str))
 
         if args.dry_run:
@@ -229,7 +229,7 @@ def main():
                     sha256_hash = EXCLUDED.sha256_hash,
                     updated_at = NOW()
                 """,
-                (rid, "legion.claude-transcript", reference, Jsonb(contents),
+                (rid, "legion.claude-code", reference, Jsonb(contents),
                  search_text, content_hash, started_at),
             )
             if rid in existing:
@@ -244,14 +244,14 @@ def main():
 
     # Final count
     row = conn.execute(
-        "SELECT count(*) AS cnt FROM bundles WHERE namespace = 'legion.claude-transcript'"
+        "SELECT count(*) AS cnt FROM bundles WHERE namespace = 'legion.claude-code'"
     ).fetchone()
     total = conn.execute("SELECT count(*) AS cnt FROM bundles").fetchone()
 
     print(f"\n=== Summary ({elapsed:.1f}s) ===")
     print(f"  Inserted: {stats['inserted']}, Updated: {stats['updated']}, "
           f"Empty: {stats['empty']}, Errors: {stats['skipped']}")
-    print(f"  legion.claude-transcript: {row['cnt']}")
+    print(f"  legion.claude-code: {row['cnt']}")
     print(f"  Total bundles: {total['cnt']}")
 
     conn.close()
