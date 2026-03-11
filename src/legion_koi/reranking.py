@@ -234,10 +234,13 @@ def rerank_results(
         if ct and len(ct) > 10:
             texts.append(ct)
         else:
-            # Use beginning of search_text as proxy — not perfect for long docs
-            # but better than random sampling which misses relevant passages
-            st = r.get("search_text", "") or ""
-            texts.append(st[:CHUNK_CHARS])
+            # Prefer ts_headline snippets (query-focused passages) over blind truncation
+            headline = r.get("headline")
+            if headline and len(headline) > 20:
+                texts.append(headline)
+            else:
+                st = r.get("search_text", "") or ""
+                texts.append(st[:CHUNK_CHARS])
 
     if not texts:
         return results[:top_k]

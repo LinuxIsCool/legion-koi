@@ -10,7 +10,10 @@ from mcp.types import TextContent, Tool
 
 from .storage.postgres import PostgresStorage
 from .embeddings import create_embedder
-from .constants import RERANK_CANDIDATE_POOL, PREVIEW_SHORT, PREVIEW_MEDIUM
+from .constants import (
+    RERANK_CANDIDATE_POOL, PREVIEW_SHORT, PREVIEW_MEDIUM,
+    HIPPO_REDIS_HOST, HIPPO_REDIS_PORT, HIPPO_GRAPH_NAME, ENTITY_RRF_BONUS,
+)
 from .reranking import create_reranker, rerank_results
 
 app = Server("legion-koi")
@@ -106,10 +109,12 @@ def _format_results(results: list[dict]) -> str:
             summary = summary[:PREVIEW_MEDIUM] + "..."
 
         score_label = "rrf" if "rrf_score" in r else "sim" if "similarity" in r else "rank"
+        headline = r.get("headline")
+        headline_line = f"\n   >> {headline}" if headline else ""
         lines.append(
             f"{i}. [{ns}] {r['rid']}\n"
             f"   {score_label}: {rank:.4f}\n"
-            f"   {summary}"
+            f"   {summary}{headline_line}"
         )
     return "\n\n".join(lines)
 
@@ -285,6 +290,29 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="entity_search",
+            description="Search using hippo's entity graph + KOI document retrieval. Finds entities matching the query in the knowledge graph, traverses relationships via Personalized PageRank, resolves to KOI bundles, and merges with hybrid search. Best for queries about known people, projects, concepts, or tools.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query — entity names and concepts work best",
+                    },
+                    "config": {
+                        "type": "string",
+                        "description": "Embedding config ID for hybrid search component. Omit to use default.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results (default 20)",
+                        "default": 20,
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
             name="koi_stats",
             description="Get bundle counts per namespace and embedding coverage in the knowledge graph.",
             inputSchema={
@@ -399,6 +427,104 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
             header = f"(Embedding unavailable: {e} — falling back to keyword search)\n\n"
             return [TextContent(type="text", text=header + _format_results(results))]
+
+    elif name == "entity_search":
+        try:
+            from .hippo_bridge import HippoBridge
+
+            query_text = arguments["query"]
+            limit = arguments.get("limit", 20)
+
+            # 1. Hippo entity graph -> RIDs via PPR
+            bridge = HippoBridge(
+                redis_host=HIPPO_REDIS_HOST,
+                redis_port=HIPPO_REDIS_PORT,
+                graph_name=HIPPO_GRAPH_NAME,
+            )
+            entity_rids = bridge.entity_search(query_text, top_k=limit * 2)
+
+            # 2. KOI hybrid search -> results
+            config_id = _resolve_config(storage, arguments.get("config"))
+            query_vec = _embed_for_config(storage, config_id, query_text)
+            hybrid_results = storage.search_config_hybrid(
+                config_id=config_id,
+                query=query_text,
+                query_embedding=query_vec,
+                limit=limit,
+            )
+
+            # 3. Merge: union + entity bonus scoring
+            bundle_map: dict[str, dict] = {}
+            scores: dict[str, float] = {}
+
+            for rank, r in enumerate(hybrid_results, 1):
+                rid = r["rid"]
+                bundle_map[rid] = r
+                scores[rid] = r.get("rrf_score", 1.0 / (60 + rank))
+
+            # Entity-resolved RIDs get a bonus; fetch bundles if not already present
+            for rank, rid in enumerate(entity_rids, 1):
+                entity_score = ENTITY_RRF_BONUS / rank
+                scores[rid] = scores.get(rid, 0) + entity_score
+                if rid not in bundle_map:
+                    bundle = storage.get_bundle(rid)
+                    if bundle:
+                        bundle_map[rid] = bundle
+
+            sorted_rids = sorted(scores, key=lambda r: scores[r], reverse=True)[:limit]
+            results = []
+            for rid in sorted_rids:
+                if rid in bundle_map:
+                    r = bundle_map[rid]
+                    r["rrf_score"] = scores[rid]
+                    results.append(r)
+
+            # Enrich with entity triples
+            results = bridge.enrich_results(results)
+
+            # Format with entity annotations
+            header = f"[config: {config_id}] [entity graph: {len(entity_rids)} RIDs from hippo]\n\n"
+            lines = []
+            for i, r in enumerate(results, 1):
+                ns = r.get("namespace", "")
+                contents = r.get("contents", {})
+                rank_score = r.get("rrf_score", 0)
+
+                # Brief summary
+                if ns == "legion.claude-message":
+                    sender = contents.get("sender_id", "")
+                    ts = (contents.get("platform_ts") or "")[:10]
+                    content_preview = (contents.get("content") or "")[:PREVIEW_SHORT]
+                    summary = f"[{sender}] {ts}: {content_preview}"
+                elif ns == "legion.claude-journal":
+                    fm = contents.get("frontmatter", {})
+                    summary = fm.get("title", "") or fm.get("description", "")
+                elif ns == "legion.claude-recording":
+                    summary = contents.get("title") or contents.get("filename", "")
+                else:
+                    summary = (r.get("search_text") or "")[:PREVIEW_MEDIUM]
+
+                if len(summary) > PREVIEW_MEDIUM:
+                    summary = summary[:PREVIEW_MEDIUM] + "..."
+
+                entity_lines = ""
+                if r.get("entities"):
+                    entity_lines = "\n   " + "\n   ".join(r["entities"][:3])
+
+                headline = r.get("headline")
+                headline_line = f"\n   >> {headline}" if headline else ""
+
+                lines.append(
+                    f"{i}. [{ns}] {r.get('rid', '?')}\n"
+                    f"   score: {rank_score:.4f}\n"
+                    f"   {summary}{headline_line}{entity_lines}"
+                )
+
+            return [TextContent(type="text", text=header + "\n\n".join(lines) if lines else "No results found.")]
+        except ImportError:
+            return [TextContent(type="text", text="Entity search unavailable: redis package not installed. Run: uv pip install redis")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Entity search error: {e}")]
 
     elif name == "koi_stats":
         stats = storage.get_stats()

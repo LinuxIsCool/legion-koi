@@ -49,6 +49,13 @@ DEFAULT_OLLAMA_RERANKER_MODEL = "bge-reranker-v2-m3"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text"
 
+# --- Hippo bridge ---
+HIPPO_REDIS_HOST = "localhost"
+HIPPO_REDIS_PORT = 6380  # FalkorDB container maps 6379->6380 to avoid Redis conflicts
+HIPPO_GRAPH_NAME = "hippo"
+# Bonus weight for entity-resolved RIDs in merged scoring (additive to RRF)
+ENTITY_RRF_BONUS = 0.01
+
 # --- HNSW index tuning ---
 HNSW_M = 16
 HNSW_EF_CONSTRUCTION = 64

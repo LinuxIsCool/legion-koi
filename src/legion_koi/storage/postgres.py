@@ -283,32 +283,40 @@ class PostgresStorage:
         return dict(row) if row else None
 
     def search_text(self, query: str, namespace: str | None = None, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
-        """Full-text search across bundles."""
+        """Full-text search across bundles with ts_headline snippet extraction."""
         conn = self._get_conn()
+        headline_opts = (
+            "MaxFragments=3, MaxWords=60, MinWords=20, "
+            "FragmentDelimiter= ... , StartSel=**, StopSel=**"
+        )
         if namespace:
             rows = conn.execute(
-                """
+                f"""
                 SELECT rid, namespace, reference, contents, search_text,
-                       ts_rank(search_vector, websearch_to_tsquery('english', %s)) AS rank
+                       ts_rank(search_vector, websearch_to_tsquery('english', %s)) AS rank,
+                       ts_headline('english', search_text, websearch_to_tsquery('english', %s),
+                                   '{headline_opts}') AS headline
                 FROM bundles
                 WHERE search_vector @@ websearch_to_tsquery('english', %s)
                   AND namespace = %s
                 ORDER BY rank DESC
                 LIMIT %s
                 """,
-                (query, query, namespace, limit),
+                (query, query, query, namespace, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                """
+                f"""
                 SELECT rid, namespace, reference, contents, search_text,
-                       ts_rank(search_vector, websearch_to_tsquery('english', %s)) AS rank
+                       ts_rank(search_vector, websearch_to_tsquery('english', %s)) AS rank,
+                       ts_headline('english', search_text, websearch_to_tsquery('english', %s),
+                                   '{headline_opts}') AS headline
                 FROM bundles
                 WHERE search_vector @@ websearch_to_tsquery('english', %s)
                 ORDER BY rank DESC
                 LIMIT %s
                 """,
-                (query, query, limit),
+                (query, query, query, limit),
             ).fetchall()
         return [dict(r) for r in rows]
 
