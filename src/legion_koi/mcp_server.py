@@ -10,6 +10,8 @@ from mcp.types import TextContent, Tool
 
 from .storage.postgres import PostgresStorage
 from .embeddings import create_embedder
+from .constants import RERANK_CANDIDATE_POOL
+from .reranking import create_reranker, rerank_chunked
 
 app = Server("legion-koi")
 
@@ -247,7 +249,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="hybrid_search",
-            description="Combined keyword + semantic search (recommended default). Uses Reciprocal Rank Fusion to merge full-text and vector results. Best overall retrieval quality.",
+            description="Combined keyword + semantic search (recommended default). Uses Reciprocal Rank Fusion to merge full-text and vector results. Best overall retrieval quality. Enable rerank for higher precision.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -267,6 +269,16 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Max results (default 20)",
                         "default": 20,
+                    },
+                    "rerank": {
+                        "type": "boolean",
+                        "description": "Enable cross-encoder reranking for higher precision (default false)",
+                        "default": False,
+                    },
+                    "rerank_backend": {
+                        "type": "string",
+                        "description": "Reranker backend: 'auto' (default), 'flag', or 'ollama'",
+                        "default": "auto",
                     },
                 },
                 "required": ["query"],
@@ -354,15 +366,31 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     elif name == "hybrid_search":
         try:
             config_id = _resolve_config(storage, arguments.get("config"))
-            query_vec = _embed_for_config(storage, config_id, arguments["query"])
+            limit = arguments.get("limit", 20)
+            rerank_enabled = arguments.get("rerank", False)
+            query_text = arguments["query"]
+            query_vec = _embed_for_config(storage, config_id, query_text)
+
+            # Fetch more candidates when reranking (reranker reorders, needs headroom)
+            fetch_limit = RERANK_CANDIDATE_POOL if rerank_enabled else limit
             results = storage.search_config_hybrid(
                 config_id=config_id,
-                query=arguments["query"],
+                query=query_text,
                 query_embedding=query_vec,
                 namespace=arguments.get("namespace"),
-                limit=arguments.get("limit", 20),
+                limit=fetch_limit,
             )
-            header = f"[config: {config_id}]\n\n"
+
+            header = f"[config: {config_id}]"
+            if rerank_enabled and results:
+                backend = arguments.get("rerank_backend", "auto")
+                reranker = create_reranker(backend=backend)
+                docs = [r.get("search_text", "") or "" for r in results]
+                reranked = rerank_chunked(reranker, query_text, docs, top_k=limit)
+                results = [results[idx] for idx, _score in reranked]
+                header += f" [reranked: {reranker.get_model()}]"
+
+            header += "\n\n"
             return [TextContent(type="text", text=header + _format_results(results))]
         except Exception as e:
             # Fall back to FTS-only if embedding fails

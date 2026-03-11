@@ -36,6 +36,7 @@ from psycopg.rows import dict_row
 sys.path.insert(0, "src")
 
 from legion_koi.chunking import chunk_text
+from legion_koi.contextual import extract_preamble, prepend_preamble
 from legion_koi.embeddings import create_embedder, _BATCH_SIZE
 from legion_koi.storage.postgres import PostgresStorage, _config_table_name
 
@@ -91,7 +92,7 @@ def upsert_chunks(conn, table, chunk_items):
                         embedding = EXCLUDED.embedding,
                         created_at = NOW()
                     """,
-                    (rid, chunk_index, chunk_str[:200], vec_literal(vec)),
+                    (rid, chunk_index, chunk_str, vec_literal(vec)),
                 )
 
 
@@ -103,12 +104,16 @@ def delete_stale_chunks(conn, table, rid, new_chunk_count):
     )
 
 
-def embed_and_store_chunks(embedder, conn, table, chunk_tuples, stats):
-    """Embed a batch of (rid, chunk_index, chunk_text) tuples and store them.
+def embed_and_store_chunks(embedder, conn, table, chunk_tuples, stats, contextual=False):
+    """Embed a batch of (rid, chunk_index, chunk_text, preamble) tuples and store them.
 
     Uses batch embedding with retry and per-item fallback.
+    When contextual=True, prepends preamble to each chunk for embedding only.
     """
-    texts = [t[2] for t in chunk_tuples]
+    if contextual:
+        texts = [prepend_preamble(t[3], t[2]) for t in chunk_tuples]
+    else:
+        texts = [t[2] for t in chunk_tuples]
 
     for attempt in range(MAX_RETRIES):
         try:
@@ -130,9 +135,10 @@ def embed_and_store_chunks(embedder, conn, table, chunk_tuples, stats):
 
     # Per-item fallback
     for ct in chunk_tuples:
-        rid, chunk_index, text = ct
+        rid, chunk_index, text = ct[0], ct[1], ct[2]
+        embed_text = prepend_preamble(ct[3], text) if contextual else text
         try:
-            vec = embedder.embed(text, input_type="passage")
+            vec = embedder.embed(embed_text, input_type="passage")
             upsert_chunks(conn, table, [(rid, chunk_index, text, vec)])
             stats["chunks"] += 1
         except Exception as e:
@@ -141,7 +147,7 @@ def embed_and_store_chunks(embedder, conn, table, chunk_tuples, stats):
                 continue
             try:
                 time.sleep(2)
-                vec = embedder.embed(text, input_type="passage")
+                vec = embedder.embed(embed_text, input_type="passage")
                 upsert_chunks(conn, table, [(rid, chunk_index, text, vec)])
                 stats["chunks"] += 1
             except Exception:
@@ -152,11 +158,12 @@ def get_conn():
     return psycopg.connect(DSN, row_factory=dict_row, autocommit=True)
 
 
-def fetch_unembedded(conn, table, ns, fetch_size):
+def fetch_unembedded(conn, table, ns, fetch_size, contextual=False):
     """Fetch bundles that have no embeddings yet."""
+    cols = "b.rid, b.search_text, b.namespace, b.contents" if contextual else "b.rid, b.search_text"
     return conn.execute(
         f"""
-        SELECT b.rid, b.search_text FROM bundles b
+        SELECT {cols} FROM bundles b
         LEFT JOIN {table} e ON b.rid = e.rid
         WHERE e.rid IS NULL AND b.namespace = %s
           {JUNK_FILTERS}
@@ -167,11 +174,12 @@ def fetch_unembedded(conn, table, ns, fetch_size):
     ).fetchall()
 
 
-def fetch_all_for_rechunk(conn, ns, fetch_size, offset):
+def fetch_all_for_rechunk(conn, ns, fetch_size, offset, contextual=False):
     """Fetch all bundles in a namespace for rechunking."""
+    cols = "b.rid, b.search_text, b.namespace, b.contents" if contextual else "b.rid, b.search_text"
     return conn.execute(
         f"""
-        SELECT b.rid, b.search_text FROM bundles b
+        SELECT {cols} FROM bundles b
         WHERE b.namespace = %s
           {JUNK_FILTERS}
         ORDER BY b.created_at
@@ -208,9 +216,9 @@ def count_all_valid(conn, ns):
     return row["cnt"]
 
 
-def process_rows(rows, embedder, conn, table, config_id, batch_size, stats, start_time, ns, total_count):
+def process_rows(rows, embedder, conn, table, config_id, batch_size, stats, start_time, ns, total_count, contextual=False):
     """Chunk and embed a batch of rows."""
-    # Build flat list of (rid, chunk_index, chunk_text)
+    # Build flat list of (rid, chunk_index, chunk_text, preamble)
     all_chunks = []
     rid_chunk_counts = {}
     for r in rows:
@@ -220,8 +228,11 @@ def process_rows(rows, embedder, conn, table, config_id, batch_size, stats, star
             continue
         chunks = chunk_text(text)
         rid_chunk_counts[r["rid"]] = len(chunks)
+        preamble = ""
+        if contextual:
+            preamble = extract_preamble(r["namespace"], r["contents"])
         for i, c in enumerate(chunks):
-            all_chunks.append((r["rid"], i, c))
+            all_chunks.append((r["rid"], i, c, preamble))
 
     if not all_chunks:
         return
@@ -229,7 +240,7 @@ def process_rows(rows, embedder, conn, table, config_id, batch_size, stats, star
     # Embed in batches
     for batch_start in range(0, len(all_chunks), batch_size):
         batch_slice = all_chunks[batch_start:batch_start + batch_size]
-        embed_and_store_chunks(embedder, conn, table, batch_slice, stats)
+        embed_and_store_chunks(embedder, conn, table, batch_slice, stats, contextual=contextual)
 
         elapsed = time.time() - start_time
         rate = stats["chunks"] / elapsed if elapsed > 0 else 0
@@ -259,6 +270,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Count chunks without embedding")
     parser.add_argument("--rechunk", action="store_true",
                         help="Re-embed ALL RIDs (not just unembedded) — use after changing chunk params")
+    parser.add_argument("--contextual", action="store_true",
+                        help="Prepend document metadata preamble to chunks before embedding (creates '-ctx' configs)")
     parser.add_argument("--list", action="store_true", help="List all configs and exit")
     args = parser.parse_args()
 
@@ -296,7 +309,8 @@ def main():
     provider = args.provider or ("telus" if "telus" in args.config or "e5" in args.config else "ollama")
     print(f"Config: {args.config}")
     print(f"Embedder: {provider}/{model} ({dims} dims, chunk_chars={args.chunk_size})")
-    print(f"Mode: {'rechunk ALL' if args.rechunk else 'unembedded only'}")
+    ctx_label = " + contextual" if args.contextual else ""
+    print(f"Mode: {'rechunk ALL' if args.rechunk else 'unembedded only'}{ctx_label}")
 
     if not args.dry_run:
         avail = embedder.is_available()
@@ -361,10 +375,10 @@ def main():
         while True:
             try:
                 if args.rechunk:
-                    rows = fetch_all_for_rechunk(conn, ns, args.fetch_size, offset)
+                    rows = fetch_all_for_rechunk(conn, ns, args.fetch_size, offset, contextual=args.contextual)
                     offset += len(rows)
                 else:
-                    rows = fetch_unembedded(conn, table, ns, args.fetch_size)
+                    rows = fetch_unembedded(conn, table, ns, args.fetch_size, contextual=args.contextual)
             except Exception as e:
                 print(f"  DB error: {e}. Reconnecting...")
                 time.sleep(2)
@@ -379,7 +393,8 @@ def main():
                 break
 
             process_rows(rows, embedder, conn, table, args.config,
-                         args.batch_size, ns_stats, start_time, ns, total_count)
+                         args.batch_size, ns_stats, start_time, ns, total_count,
+                         contextual=args.contextual)
 
         total_stats["rids"] += ns_stats["rids"]
         total_stats["chunks"] += ns_stats["chunks"]

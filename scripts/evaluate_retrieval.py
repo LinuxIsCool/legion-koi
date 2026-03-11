@@ -25,6 +25,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -36,6 +37,8 @@ from psycopg.rows import dict_row
 sys.path.insert(0, "src")
 
 from legion_koi.embeddings import create_embedder
+from legion_koi.constants import RERANK_CANDIDATE_POOL
+from legion_koi.reranking import create_reranker, rerank_chunked
 from legion_koi.storage.postgres import PostgresStorage
 
 DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
@@ -43,7 +46,7 @@ DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
 GOLDEN_QUERIES_PATH = Path("scripts/golden_queries.jsonl")
 EVAL_RESULTS_DIR = Path("scripts/eval_results")
 
-ALL_MODES = ["fts", "semantic", "hybrid"]
+ALL_MODES = ["fts", "semantic", "hybrid", "hybrid+rerank-flag"]
 
 
 # --- Metrics (pure Python) ---
@@ -196,11 +199,37 @@ def build_eval_matrix(
                     "model": cfg.get("model"),
                     "label": f"{mode}/{cid}",
                 })
+        elif mode.startswith("hybrid+rerank"):
+            # e.g. "hybrid+rerank-flag" or "hybrid+rerank-ollama"
+            backend = mode.split("-", 2)[-1]  # "flag" or "ollama"
+            for cid in config_ids:
+                if cid not in config_map:
+                    print(f"  WARN: config '{cid}' not found in DB, skipping")
+                    continue
+                cfg = config_map[cid]
+                combos.append({
+                    "mode": mode,
+                    "config_id": cid,
+                    "provider": cfg.get("provider"),
+                    "model": cfg.get("model"),
+                    "reranker_backend": backend,
+                    "label": f"{mode}/{cid}",
+                })
 
     return combos
 
 
 # --- Search Runner ---
+
+
+_reranker_cache: dict[str, object] = {}
+
+
+def _get_reranker(backend: str):
+    """Get or create a cached reranker instance."""
+    if backend not in _reranker_cache:
+        _reranker_cache[backend] = create_reranker(backend=backend)
+    return _reranker_cache[backend]
 
 
 def run_search(
@@ -225,6 +254,17 @@ def run_search(
             if embedding is None:
                 return []
             results = storage.search_config_hybrid(config_id, query, embedding, limit=limit)
+        elif mode.startswith("hybrid+rerank"):
+            if embedding is None:
+                return []
+            backend = combo.get("reranker_backend", "auto")
+            candidates = storage.search_config_hybrid(config_id, query, embedding, limit=RERANK_CANDIDATE_POOL)
+            if not candidates:
+                return []
+            reranker = _get_reranker(backend)
+            docs = [r.get("search_text", "") or "" for r in candidates]
+            reranked = rerank_chunked(reranker, query, docs, top_k=limit)
+            return [candidates[idx]["rid"] for idx, _score in reranked]
         else:
             return []
     except Exception as e:
@@ -263,9 +303,10 @@ def evaluate(
             query_text = q["query"]
             relevant = q["relevant_rids"]
 
-            # Get embedding if needed
+            # Get embedding if needed (semantic, hybrid, and hybrid+rerank all need embeddings)
             embedding = None
-            if combo["mode"] in ("semantic", "hybrid"):
+            needs_embedding = combo["mode"] in ("semantic", "hybrid") or combo["mode"].startswith("hybrid+rerank")
+            if needs_embedding:
                 embedding = embed_cache.get_or_embed(provider, model, query_text)
 
                 if embedding is None and combo["mode"] == "semantic":
@@ -453,7 +494,8 @@ def print_table(results: list[dict], k_values: list[int], compare_data: dict | N
                     else:
                         cell = f"{val:.3f}({delta_str})"
 
-            line += f"  {cell:>{col_width}}"
+            pad = col_width - _visible_len(cell)
+            line += "  " + " " * max(0, pad) + cell
 
         if r.get("latency_ms"):
             lat = r["latency_ms"]
@@ -512,12 +554,15 @@ def _report_label(path: Path, report: dict) -> str:
     """Derive a short label for a report — use 'name' field or filename stem."""
     if report.get("name"):
         return report["name"]
-    stem = path.stem
-    # Strip common prefixes/timestamps for cleaner labels
-    for prefix in ("baseline-", "post-"):
-        if stem.startswith(prefix):
-            return stem
-    return stem
+    return path.stem
+
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+def _visible_len(s: str) -> int:
+    """String length excluding ANSI escape sequences."""
+    return len(_ANSI_RE.sub("", s))
 
 
 def print_ablation_matrix(report_paths: list[Path]):
@@ -600,7 +645,9 @@ def print_ablation_matrix(report_paths: list[Path]):
                         color = green if delta > 0 else red
                         cell = f"{val:.3f} {color}{sign}{delta:.3f}{reset}"
 
-                line += f"  {cell:>{col_w}}"
+                # Pad accounting for invisible ANSI codes
+                pad = col_w - _visible_len(cell)
+                line += "  " + " " * max(0, pad) + cell
 
             print(line)
 
