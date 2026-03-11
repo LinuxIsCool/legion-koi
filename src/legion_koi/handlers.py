@@ -111,14 +111,22 @@ class VentureBundleHandler(KnowledgeHandler):
 
 
 def _embed_bundle(rid: str, namespace: str, contents: dict) -> None:
-    """Embed a bundle's search text into all active config tables. Best-effort."""
+    """Embed a bundle's search text into all active config tables. Best-effort.
+
+    Chunks the document first, then embeds each chunk separately.
+    """
     if _postgres_storage is None:
         return
     try:
+        from .chunking import chunk_text
         from .embeddings import create_embedder
 
         search_text = _extract_search_text(namespace, contents)
         if not search_text or not search_text.strip():
+            return
+
+        chunks = chunk_text(search_text)
+        if not chunks:
             return
 
         configs = _postgres_storage.list_embedding_configs()
@@ -127,13 +135,17 @@ def _embed_bundle(rid: str, namespace: str, contents: dict) -> None:
                 cfg_embedder = create_embedder(
                     provider=cfg["provider"], model=cfg["model"]
                 )
-                vec = cfg_embedder.embed(search_text, input_type="passage")
-                _postgres_storage.upsert_config_embedding(
-                    config_id=cfg["config_id"],
-                    rid=rid,
-                    embedding=vec,
-                    chunk_text=search_text[:200],
-                )
+                # Clear old chunks first (document may have changed size)
+                _postgres_storage.delete_config_embeddings(cfg["config_id"], rid)
+                for i, chunk in enumerate(chunks):
+                    vec = cfg_embedder.embed(chunk, input_type="passage")
+                    _postgres_storage.upsert_config_embedding(
+                        config_id=cfg["config_id"],
+                        rid=rid,
+                        embedding=vec,
+                        chunk_index=i,
+                        chunk_text=chunk[:200],
+                    )
             except Exception:
                 slog.debug("embedding.config_inline_skip", rid=rid, config=cfg["config_id"])
     except Exception:

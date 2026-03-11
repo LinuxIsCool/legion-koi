@@ -458,13 +458,25 @@ class PostgresStorage:
                         ),
                     )
 
+    def delete_config_embeddings(self, config_id: str, rid: str) -> None:
+        """Delete all chunks for a RID from a config table."""
+        table = _config_table_name(config_id)
+        conn = self._get_conn()
+        conn.execute(f"DELETE FROM {table} WHERE rid = %s", (rid,))
+
     def search_config_semantic(
         self, config_id: str, query_embedding: list[float], namespace: str | None = None, limit: int = 20
     ) -> list[dict]:
-        """Semantic search against a specific embedding config."""
+        """Semantic search against a specific embedding config.
+
+        Oversamples chunks and deduplicates by RID (keeping best similarity)
+        to handle multi-chunk documents correctly.
+        """
         table = _config_table_name(config_id)
         conn = self._get_conn()
         vec = self._vec_literal(query_embedding)
+        # Oversample to ensure enough unique RIDs after dedup
+        fetch_limit = limit * 5
         if namespace:
             rows = conn.execute(
                 f"""
@@ -477,7 +489,7 @@ class PostgresStorage:
                 ORDER BY e.embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (vec, namespace, vec, limit),
+                (vec, namespace, vec, fetch_limit),
             ).fetchall()
         else:
             rows = conn.execute(
@@ -490,9 +502,17 @@ class PostgresStorage:
                 ORDER BY e.embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (vec, vec, limit),
+                (vec, vec, fetch_limit),
             ).fetchall()
-        return [dict(r) for r in rows]
+        # Deduplicate: keep best chunk per RID
+        seen: dict[str, dict] = {}
+        for r in rows:
+            row = dict(r)
+            rid = row["rid"]
+            if rid not in seen or row["similarity"] > seen[rid]["similarity"]:
+                seen[rid] = row
+        results = sorted(seen.values(), key=lambda x: x["similarity"], reverse=True)[:limit]
+        return results
 
     def search_config_hybrid(
         self,

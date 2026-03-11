@@ -3,6 +3,7 @@
 
 Supports any registered config — different models, dimensions, chunk sizes.
 Can run multiple instances in parallel for different configs.
+Uses document chunking: large texts are split into overlapping passages.
 
 Usage:
     # Register + backfill with Telus E5 (default)
@@ -14,10 +15,13 @@ Usage:
     # Register + backfill with Ollama nomic
     uv run python scripts/backfill_config.py --config ollama-nomic-768 --provider ollama --model nomic-embed-text
 
+    # Re-chunk all existing embeddings (after changing chunk params)
+    uv run python scripts/backfill_config.py --config ollama-nomic-768 --rechunk --provider ollama --model nomic-embed-text
+
     # List all configs
     uv run python scripts/backfill_config.py --list
 
-    # Dry run
+    # Dry run (count chunks)
     uv run python scripts/backfill_config.py --config telus-e5-1024 --dry-run
 """
 
@@ -31,6 +35,7 @@ from psycopg.rows import dict_row
 
 sys.path.insert(0, "src")
 
+from legion_koi.chunking import chunk_text
 from legion_koi.embeddings import create_embedder, _BATCH_SIZE
 from legion_koi.storage.postgres import PostgresStorage, _config_table_name
 
@@ -53,6 +58,16 @@ NAMESPACES_ORDER = [
 MAX_RETRIES = 3
 RETRY_BACKOFF = [2, 5, 15]
 
+# Junk text filters (base64 blobs, HTML doctype, binary hashes)
+JUNK_FILTERS = """
+    AND btrim(b.search_text) != ''
+    AND b.search_text NOT LIKE %s
+    AND b.search_text NOT LIKE %s
+    AND b.search_text NOT LIKE %s
+    AND left(b.search_text, 100) !~ '[A-Za-z0-9+/=]{60,}'
+"""
+JUNK_PARAMS = ('--00000000%', '<!doctype%', '<!DOCTYPE%')
+
 
 def _is_client_error(e: Exception) -> bool:
     return "400" in str(e) or "422" in str(e) or "413" in str(e)
@@ -62,15 +77,48 @@ def vec_literal(v: list[float]) -> str:
     return "[" + ",".join(f"{x:.8f}" for x in v) + "]"
 
 
-def embed_batch_resilient(embedder, rids, texts, config_id, conn, stats):
-    """Embed a batch with retry and per-item fallback."""
-    table = _config_table_name(config_id)
+def upsert_chunks(conn, table, chunk_items):
+    """Upsert [(rid, chunk_index, chunk_text, vector), ...] into config table."""
+    with conn.transaction():
+        with conn.cursor() as cur:
+            for rid, chunk_index, chunk_str, vec in chunk_items:
+                cur.execute(
+                    f"""
+                    INSERT INTO {table} (rid, chunk_index, chunk_text, embedding)
+                    VALUES (%s, %s, %s, %s::vector)
+                    ON CONFLICT (rid, chunk_index) DO UPDATE SET
+                        chunk_text = EXCLUDED.chunk_text,
+                        embedding = EXCLUDED.embedding,
+                        created_at = NOW()
+                    """,
+                    (rid, chunk_index, chunk_str[:200], vec_literal(vec)),
+                )
+
+
+def delete_stale_chunks(conn, table, rid, new_chunk_count):
+    """Remove chunks beyond the new count (document may have shrunk)."""
+    conn.execute(
+        f"DELETE FROM {table} WHERE rid = %s AND chunk_index >= %s",
+        (rid, new_chunk_count),
+    )
+
+
+def embed_and_store_chunks(embedder, conn, table, chunk_tuples, stats):
+    """Embed a batch of (rid, chunk_index, chunk_text) tuples and store them.
+
+    Uses batch embedding with retry and per-item fallback.
+    """
+    texts = [t[2] for t in chunk_tuples]
 
     for attempt in range(MAX_RETRIES):
         try:
             vectors = embedder.embed_batch(texts, input_type="passage")
-            _upsert_batch(conn, table, list(zip(rids, texts, vectors)))
-            stats["embedded"] += len(vectors)
+            items = [
+                (ct[0], ct[1], ct[2], vec)
+                for ct, vec in zip(chunk_tuples, vectors)
+            ]
+            upsert_chunks(conn, table, items)
+            stats["chunks"] += len(vectors)
             return
         except Exception as e:
             if _is_client_error(e):
@@ -81,11 +129,12 @@ def embed_batch_resilient(embedder, rids, texts, config_id, conn, stats):
                 time.sleep(wait)
 
     # Per-item fallback
-    for rid, text in zip(rids, texts):
+    for ct in chunk_tuples:
+        rid, chunk_index, text = ct
         try:
             vec = embedder.embed(text, input_type="passage")
-            _upsert_batch(conn, table, [(rid, text, vec)])
-            stats["embedded"] += 1
+            upsert_chunks(conn, table, [(rid, chunk_index, text, vec)])
+            stats["chunks"] += 1
         except Exception as e:
             if _is_client_error(e):
                 stats["skipped"] += 1
@@ -93,32 +142,107 @@ def embed_batch_resilient(embedder, rids, texts, config_id, conn, stats):
             try:
                 time.sleep(2)
                 vec = embedder.embed(text, input_type="passage")
-                _upsert_batch(conn, table, [(rid, text, vec)])
-                stats["embedded"] += 1
+                upsert_chunks(conn, table, [(rid, chunk_index, text, vec)])
+                stats["chunks"] += 1
             except Exception:
                 stats["skipped"] += 1
 
 
-def _upsert_batch(conn, table, triples):
-    """Upsert (rid, text, vector) triples into config table."""
-    with conn.transaction():
-        with conn.cursor() as cur:
-            for rid, text, vec in triples:
-                cur.execute(
-                    f"""
-                    INSERT INTO {table} (rid, chunk_index, chunk_text, embedding)
-                    VALUES (%s, 0, %s, %s::vector)
-                    ON CONFLICT (rid, chunk_index) DO UPDATE SET
-                        chunk_text = EXCLUDED.chunk_text,
-                        embedding = EXCLUDED.embedding,
-                        created_at = NOW()
-                    """,
-                    (rid, text[:200], vec_literal(vec)),
-                )
-
-
 def get_conn():
     return psycopg.connect(DSN, row_factory=dict_row, autocommit=True)
+
+
+def fetch_unembedded(conn, table, ns, fetch_size):
+    """Fetch bundles that have no embeddings yet."""
+    return conn.execute(
+        f"""
+        SELECT b.rid, b.search_text FROM bundles b
+        LEFT JOIN {table} e ON b.rid = e.rid
+        WHERE e.rid IS NULL AND b.namespace = %s
+          {JUNK_FILTERS}
+        ORDER BY b.created_at
+        LIMIT %s
+        """,
+        (ns, *JUNK_PARAMS, fetch_size),
+    ).fetchall()
+
+
+def fetch_all_for_rechunk(conn, ns, fetch_size, offset):
+    """Fetch all bundles in a namespace for rechunking."""
+    return conn.execute(
+        f"""
+        SELECT b.rid, b.search_text FROM bundles b
+        WHERE b.namespace = %s
+          {JUNK_FILTERS}
+        ORDER BY b.created_at
+        LIMIT %s OFFSET %s
+        """,
+        (ns, *JUNK_PARAMS, fetch_size, offset),
+    ).fetchall()
+
+
+def count_unembedded(conn, table, ns):
+    """Count bundles with no embeddings."""
+    row = conn.execute(
+        f"""
+        SELECT count(*) AS cnt FROM bundles b
+        LEFT JOIN {table} e ON b.rid = e.rid
+        WHERE e.rid IS NULL AND b.namespace = %s
+          {JUNK_FILTERS}
+        """,
+        (ns, *JUNK_PARAMS),
+    ).fetchone()
+    return row["cnt"]
+
+
+def count_all_valid(conn, ns):
+    """Count all valid bundles in a namespace."""
+    row = conn.execute(
+        f"""
+        SELECT count(*) AS cnt FROM bundles b
+        WHERE b.namespace = %s
+          {JUNK_FILTERS}
+        """,
+        (ns, *JUNK_PARAMS),
+    ).fetchone()
+    return row["cnt"]
+
+
+def process_rows(rows, embedder, conn, table, config_id, batch_size, stats, start_time, ns, total_count):
+    """Chunk and embed a batch of rows."""
+    # Build flat list of (rid, chunk_index, chunk_text)
+    all_chunks = []
+    rid_chunk_counts = {}
+    for r in rows:
+        text = r["search_text"]
+        if not text or not text.strip():
+            stats["skipped"] += 1
+            continue
+        chunks = chunk_text(text)
+        rid_chunk_counts[r["rid"]] = len(chunks)
+        for i, c in enumerate(chunks):
+            all_chunks.append((r["rid"], i, c))
+
+    if not all_chunks:
+        return
+
+    # Embed in batches
+    for batch_start in range(0, len(all_chunks), batch_size):
+        batch_slice = all_chunks[batch_start:batch_start + batch_size]
+        embed_and_store_chunks(embedder, conn, table, batch_slice, stats)
+
+        elapsed = time.time() - start_time
+        rate = stats["chunks"] / elapsed if elapsed > 0 else 0
+        print(f"  [{ns}] {stats['rids']}/{total_count} RIDs, "
+              f"{stats['chunks']} chunks ({rate:.1f} chunks/s)")
+
+        time.sleep(0.05)
+
+    # Delete stale chunks for rechunked RIDs
+    for rid, count in rid_chunk_counts.items():
+        delete_stale_chunks(conn, table, rid, count)
+
+    stats["rids"] += len(rid_chunk_counts)
 
 
 def main():
@@ -126,13 +250,15 @@ def main():
     parser.add_argument("--config", help="Config ID (e.g., telus-e5-1024, ollama-mxbai-1024)")
     parser.add_argument("--provider", choices=["telus", "ollama"], help="Embedding provider")
     parser.add_argument("--model", help="Model name")
-    parser.add_argument("--chunk-size", type=int, default=1000, help="Max chars per chunk")
+    parser.add_argument("--chunk-size", type=int, default=1600, help="Max chars per chunk (default: 1600)")
     parser.add_argument("--description", default="", help="Config description")
     parser.add_argument("--default", action="store_true", help="Set as default config")
     parser.add_argument("--namespace", help="Only backfill this namespace")
-    parser.add_argument("--batch-size", type=int, default=_BATCH_SIZE, help="Texts per API call")
-    parser.add_argument("--fetch-size", type=int, default=500, help="DB fetch batch size")
-    parser.add_argument("--dry-run", action="store_true", help="Count without embedding")
+    parser.add_argument("--batch-size", type=int, default=_BATCH_SIZE, help="Chunks per API call")
+    parser.add_argument("--fetch-size", type=int, default=100, help="DB fetch batch size (RIDs)")
+    parser.add_argument("--dry-run", action="store_true", help="Count chunks without embedding")
+    parser.add_argument("--rechunk", action="store_true",
+                        help="Re-embed ALL RIDs (not just unembedded) — use after changing chunk params")
     parser.add_argument("--list", action="store_true", help="List all configs and exit")
     args = parser.parse_args()
 
@@ -148,11 +274,11 @@ def main():
             table = _config_table_name(cfg["config_id"])
             print(f"  {cfg['config_id']}{default}: {cfg['provider']}/{cfg['model']} "
                   f"({cfg['dimensions']}d, chunk={cfg['chunk_size']})")
-            # Count
             try:
                 conn = get_conn()
                 row = conn.execute(f"SELECT count(*) AS cnt FROM {table}").fetchone()
-                print(f"    Table: {table}, Rows: {row['cnt']}")
+                rid_row = conn.execute(f"SELECT count(DISTINCT rid) AS cnt FROM {table}").fetchone()
+                print(f"    Table: {table}, Chunks: {row['cnt']}, RIDs: {rid_row['cnt']}")
                 conn.close()
             except Exception:
                 print(f"    Table: {table} (not created)")
@@ -169,7 +295,8 @@ def main():
     dims = embedder.get_dimensions()
     provider = args.provider or ("telus" if "telus" in args.config or "e5" in args.config else "ollama")
     print(f"Config: {args.config}")
-    print(f"Embedder: {provider}/{model} ({dims} dims, chunk_size={args.chunk_size})")
+    print(f"Embedder: {provider}/{model} ({dims} dims, chunk_chars={args.chunk_size})")
+    print(f"Mode: {'rechunk ALL' if args.rechunk else 'unembedded only'}")
 
     if not args.dry_run:
         avail = embedder.is_available()
@@ -196,53 +323,48 @@ def main():
     table = _config_table_name(args.config)
     namespaces = [args.namespace] if args.namespace else NAMESPACES_ORDER
 
-    total_stats = {"embedded": 0, "skipped": 0}
+    total_stats = {"rids": 0, "chunks": 0, "skipped": 0}
     start_time = time.time()
 
     for ns in namespaces:
-        row = conn.execute(
-            f"""
-            SELECT count(*) AS cnt FROM bundles b
-            LEFT JOIN {table} e ON b.rid = e.rid
-            WHERE e.rid IS NULL AND b.namespace = %s
-              AND btrim(b.search_text) != ''
-              AND b.search_text NOT LIKE %s
-              AND b.search_text NOT LIKE %s
-              AND b.search_text NOT LIKE %s
-              AND left(b.search_text, 100) !~ '[A-Za-z0-9+/=]{{60,}}'
-            """,
-            (ns, '--00000000%', '<!doctype%', '<!DOCTYPE%'),
-        ).fetchone()
-        unembedded = row["cnt"]
+        if args.rechunk:
+            total_count = count_all_valid(conn, ns)
+        else:
+            total_count = count_unembedded(conn, table, ns)
 
-        if unembedded == 0:
-            print(f"[{ns}] All embedded for {args.config}, skipping")
+        if total_count == 0:
+            print(f"[{ns}] {'All embedded' if not args.rechunk else 'No valid bundles'}, skipping")
             continue
 
-        print(f"[{ns}] {unembedded} unembedded bundles")
-
+        # Dry run: count estimated chunks
         if args.dry_run:
+            sample = conn.execute(
+                f"""
+                SELECT b.search_text FROM bundles b
+                WHERE b.namespace = %s
+                  {JUNK_FILTERS}
+                LIMIT 500
+                """,
+                (ns, *JUNK_PARAMS),
+            ).fetchall()
+            total_chunks = sum(len(chunk_text(r["search_text"])) for r in sample if r["search_text"])
+            avg_chunks = total_chunks / len(sample) if sample else 1
+            est_total = int(total_count * avg_chunks)
+            print(f"[{ns}] {total_count} RIDs, ~{avg_chunks:.1f} chunks/RID, ~{est_total} total chunks")
             continue
 
-        ns_stats = {"embedded": 0, "skipped": 0}
+        print(f"[{ns}] {total_count} {'RIDs to rechunk' if args.rechunk else 'unembedded RIDs'}")
+
+        ns_stats = {"rids": 0, "chunks": 0, "skipped": 0}
+        offset = 0
 
         while True:
             try:
-                rows = conn.execute(
-                    f"""
-                    SELECT b.rid, b.search_text FROM bundles b
-                    LEFT JOIN {table} e ON b.rid = e.rid
-                    WHERE e.rid IS NULL AND b.namespace = %s
-                      AND btrim(b.search_text) != ''
-                      AND b.search_text NOT LIKE %s
-                      AND b.search_text NOT LIKE %s
-                      AND b.search_text NOT LIKE %s
-                      AND left(b.search_text, 100) !~ '[A-Za-z0-9+/=]{{60,}}'
-                    ORDER BY b.created_at
-                    LIMIT %s
-                    """,
-                    (ns, '--00000000%', '<!doctype%', '<!DOCTYPE%', args.fetch_size),
-                ).fetchall()
+                if args.rechunk:
+                    rows = fetch_all_for_rechunk(conn, ns, args.fetch_size, offset)
+                    offset += len(rows)
+                else:
+                    rows = fetch_unembedded(conn, table, ns, args.fetch_size)
             except Exception as e:
                 print(f"  DB error: {e}. Reconnecting...")
                 time.sleep(2)
@@ -256,34 +378,17 @@ def main():
             if not rows:
                 break
 
-            for i in range(0, len(rows), args.batch_size):
-                batch = rows[i:i + args.batch_size]
-                valid = [(r["rid"], r["search_text"]) for r in batch
-                         if r["search_text"] and r["search_text"].strip()]
+            process_rows(rows, embedder, conn, table, args.config,
+                         args.batch_size, ns_stats, start_time, ns, total_count)
 
-                if not valid:
-                    ns_stats["skipped"] += len(batch)
-                    continue
-
-                rids = [v[0] for v in valid]
-                texts = [v[1] for v in valid]
-
-                embed_batch_resilient(embedder, rids, texts, args.config, conn, ns_stats)
-
-                elapsed = time.time() - start_time
-                done = total_stats["embedded"] + ns_stats["embedded"]
-                rate = done / elapsed if elapsed > 0 else 0
-                print(f"  [{ns}] {ns_stats['embedded']}/{unembedded} embedded "
-                      f"({rate:.1f}/s, config: {args.config})")
-
-                time.sleep(0.1)
-
-        total_stats["embedded"] += ns_stats["embedded"]
+        total_stats["rids"] += ns_stats["rids"]
+        total_stats["chunks"] += ns_stats["chunks"]
         total_stats["skipped"] += ns_stats["skipped"]
-        print(f"  [{ns}] Done: {ns_stats['embedded']} embedded, {ns_stats['skipped']} skipped")
+        print(f"  [{ns}] Done: {ns_stats['rids']} RIDs, {ns_stats['chunks']} chunks, "
+              f"{ns_stats['skipped']} skipped")
 
     elapsed = time.time() - start_time
-    print(f"\nComplete [{args.config}]: {total_stats['embedded']} embedded, "
+    print(f"\nComplete [{args.config}]: {total_stats['rids']} RIDs, {total_stats['chunks']} chunks, "
           f"{total_stats['skipped']} skipped in {elapsed:.1f}s")
     conn.close()
 

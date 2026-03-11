@@ -14,8 +14,9 @@ import structlog
 
 log = structlog.stdlib.get_logger()
 
-# E5 model has hard 512 token limit; messages/code tokenize at ~2 chars/token → 1000 chars safe ceiling
-_MAX_EMBED_CHARS = 1000
+# Safety net for embedder input — chunks are pre-sized by chunking module (~1600 chars).
+# This truncation only fires if unchunked text is passed directly.
+_MAX_EMBED_CHARS = 2000
 _BATCH_SIZE = 20  # matches TS plugin's EMBED_BATCH_SIZE
 
 
