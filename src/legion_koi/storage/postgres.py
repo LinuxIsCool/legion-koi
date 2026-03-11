@@ -541,6 +541,9 @@ class PostgresStorage:
             scores[rid] = scores.get(rid, 0) + 1.0 / (k + rank)
             if rid not in bundle_map:
                 bundle_map[rid] = r
+            elif r.get("chunk_text") and not bundle_map[rid].get("chunk_text"):
+                # Preserve chunk_text from vector results for reranking
+                bundle_map[rid]["chunk_text"] = r["chunk_text"]
 
         sorted_rids = sorted(scores, key=lambda rid: scores[rid], reverse=True)[:limit]
         results = []

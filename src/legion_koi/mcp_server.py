@@ -11,7 +11,7 @@ from mcp.types import TextContent, Tool
 from .storage.postgres import PostgresStorage
 from .embeddings import create_embedder
 from .constants import RERANK_CANDIDATE_POOL
-from .reranking import create_reranker, rerank_chunked
+from .reranking import create_reranker, rerank_results
 
 app = Server("legion-koi")
 
@@ -385,9 +385,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             if rerank_enabled and results:
                 backend = arguments.get("rerank_backend", "auto")
                 reranker = create_reranker(backend=backend)
-                docs = [r.get("search_text", "") or "" for r in results]
-                reranked = rerank_chunked(reranker, query_text, docs, top_k=limit)
-                results = [results[idx] for idx, _score in reranked]
+                results = rerank_results(reranker, query_text, results, top_k=limit)
                 header += f" [reranked: {reranker.get_model()}]"
 
             header += "\n\n"

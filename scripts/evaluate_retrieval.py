@@ -38,7 +38,7 @@ sys.path.insert(0, "src")
 
 from legion_koi.embeddings import create_embedder
 from legion_koi.constants import RERANK_CANDIDATE_POOL
-from legion_koi.reranking import create_reranker, rerank_chunked
+from legion_koi.reranking import create_reranker, rerank_results
 from legion_koi.storage.postgres import PostgresStorage
 
 DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
@@ -262,9 +262,8 @@ def run_search(
             if not candidates:
                 return []
             reranker = _get_reranker(backend)
-            docs = [r.get("search_text", "") or "" for r in candidates]
-            reranked = rerank_chunked(reranker, query, docs, top_k=limit)
-            return [candidates[idx]["rid"] for idx, _score in reranked]
+            reranked = rerank_results(reranker, query, candidates, top_k=limit)
+            return [r["rid"] for r in reranked]
         else:
             return []
     except Exception as e:

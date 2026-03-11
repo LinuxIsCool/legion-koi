@@ -208,6 +208,64 @@ def rerank_chunked(
     return sorted_docs[:top_k]
 
 
+def rerank_results(
+    reranker: Reranker,
+    query: str,
+    results: list[dict],
+    top_k: int = RERANK_DEFAULT_TOP_K,
+    max_chunks_per_doc: int = RERANK_MAX_CHUNKS_PER_DOC,
+) -> list[dict]:
+    """Rerank search result dicts, using the best available text per result.
+
+    Prefers chunk_text (from vector search — already the best matching passage)
+    over chunking the full search_text. This is much faster and more accurate
+    because the vector index already found the relevant passage.
+
+    Returns reranked result dicts (same shape as input, reordered).
+    """
+    from .chunking import chunk_text
+
+    all_chunks: list[tuple[int, str]] = []
+    for idx, r in enumerate(results):
+        ct = r.get("chunk_text")
+        if ct:
+            # Vector search already found the relevant chunk — use it directly
+            all_chunks.append((idx, ct))
+        else:
+            # FTS result — no chunk available, sample from search_text
+            text = r.get("search_text", "") or ""
+            chunks = chunk_text(text)
+            if not chunks:
+                all_chunks.append((idx, text))
+            elif len(chunks) <= max_chunks_per_doc:
+                for c in chunks:
+                    all_chunks.append((idx, c))
+            else:
+                indices = [0, len(chunks) - 1]
+                step = len(chunks) / (max_chunks_per_doc - 1)
+                for i in range(1, max_chunks_per_doc - 1):
+                    candidate = int(i * step)
+                    if candidate not in indices:
+                        indices.append(candidate)
+                for i in sorted(set(indices))[:max_chunks_per_doc]:
+                    all_chunks.append((idx, chunks[i]))
+
+    if not all_chunks:
+        return results[:top_k]
+
+    chunk_texts = [c[1] for c in all_chunks]
+    chunk_scores = reranker.rerank(query, chunk_texts, top_k=len(chunk_texts))
+
+    doc_best: dict[int, float] = {}
+    for chunk_flat_idx, score in chunk_scores:
+        doc_idx = all_chunks[chunk_flat_idx][0]
+        if doc_idx not in doc_best or score > doc_best[doc_idx]:
+            doc_best[doc_idx] = score
+
+    sorted_docs = sorted(doc_best.items(), key=lambda x: x[1], reverse=True)
+    return [results[idx] for idx, _score in sorted_docs[:top_k]]
+
+
 # -- Factory --
 
 
