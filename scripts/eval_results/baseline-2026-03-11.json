@@ -1,5 +1,6 @@
 {
   "timestamp": "2026-03-11T18:00:38.226905+00:00",
+  "name": "pre-chunking baseline",
   "query_count": 30,
   "limit": 20,
   "k_values": [

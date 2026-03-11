@@ -14,6 +14,9 @@ Usage:
     # Compare against baseline
     uv run python scripts/evaluate_retrieval.py --compare scripts/eval_results/baseline.json
 
+    # Ablation matrix — compare multiple saved reports side-by-side (no live eval)
+    uv run python scripts/evaluate_retrieval.py --ablation scripts/eval_results/baseline.json,scripts/eval_results/post-chunking.json,scripts/eval_results/post-rerank.json
+
     # With latency and per-query detail
     uv run python scripts/evaluate_retrieval.py --latency --verbose
 """
@@ -486,16 +489,122 @@ def print_category_breakdown(results: list[dict], k_values: list[int]):
 
 
 def build_json_report(
-    results: list[dict], query_count: int, limit: int, k_values: list[int]
+    results: list[dict], query_count: int, limit: int, k_values: list[int],
+    name: str | None = None,
 ) -> dict:
     """Build the JSON report structure."""
-    return {
+    report = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "query_count": query_count,
         "limit": limit,
         "k_values": k_values,
         "configurations": results,
     }
+    if name:
+        report["name"] = name
+    return report
+
+
+# --- Ablation Matrix ---
+
+
+def _report_label(path: Path, report: dict) -> str:
+    """Derive a short label for a report — use 'name' field or filename stem."""
+    if report.get("name"):
+        return report["name"]
+    stem = path.stem
+    # Strip common prefixes/timestamps for cleaner labels
+    for prefix in ("baseline-", "post-"):
+        if stem.startswith(prefix):
+            return stem
+    return stem
+
+
+def print_ablation_matrix(report_paths: list[Path]):
+    """Load multiple evaluation reports and print a side-by-side comparison table.
+
+    Each report becomes a row group. Within each group, every configuration
+    (fts, hybrid/*, semantic/*) is a row. Columns show key metrics + delta
+    from the first report (the baseline).
+    """
+    reports = []
+    for p in report_paths:
+        if not p.exists():
+            print(f"  WARN: {p} not found, skipping")
+            continue
+        with open(p) as f:
+            data = json.load(f)
+        reports.append((p, data))
+
+    if len(reports) < 2:
+        print("ERROR: ablation matrix needs at least 2 reports")
+        return
+
+    # Determine baseline (first report)
+    base_path, base_data = reports[0]
+    base_label = _report_label(base_path, base_data)
+    base_metrics = {cfg["label"]: cfg["metrics"] for cfg in base_data.get("configurations", [])}
+
+    # Key metrics to show (compact)
+    show_metrics = ["recall@5", "recall@10", "recall@20", "mrr", "ndcg@10"]
+    show_headers = ["R@5", "R@10", "R@20", "MRR", "NDCG@10"]
+
+    is_tty = sys.stdout.isatty()
+    green = "\033[32m" if is_tty else ""
+    red = "\033[31m" if is_tty else ""
+    bold = "\033[1m" if is_tty else ""
+    dim = "\033[2m" if is_tty else ""
+    reset = "\033[0m" if is_tty else ""
+
+    label_w = 30
+    col_w = 16  # wide enough for "0.967(+0.100)"
+
+    # Header
+    print(f"\n{bold}=== Ablation Matrix (baseline: {base_label}) ==={reset}\n")
+    header = f"{'Config':<{label_w}}"
+    for h in show_headers:
+        header += f"  {h:>{col_w}}"
+    print(header)
+    print("─" * len(header))
+
+    for i, (path, data) in enumerate(reports):
+        rlabel = _report_label(path, data)
+        configs = data.get("configurations", [])
+
+        if i > 0:
+            print(f"\n{bold}  {rlabel}{reset} ({data.get('timestamp', '?')[:10]})")
+            print("  " + "─" * (len(header) - 2))
+
+        else:
+            print(f"{bold}  {rlabel}{reset} (baseline)")
+            print("  " + "─" * (len(header) - 2))
+
+        for cfg in configs:
+            cfg_label = cfg.get("label", "?")
+            metrics = cfg.get("metrics", {})
+            line = f"  {cfg_label:<{label_w - 2}}"
+
+            for key in show_metrics:
+                val = metrics.get(key, 0.0)
+                base_val = base_metrics.get(cfg_label, {}).get(key)
+
+                if i == 0 or base_val is None:
+                    # Baseline row — no delta
+                    cell = f"{val:.3f}"
+                else:
+                    delta = val - base_val
+                    if abs(delta) < 0.001:
+                        cell = f"{val:.3f} {dim}(=){reset}"
+                    else:
+                        sign = "+" if delta > 0 else ""
+                        color = green if delta > 0 else red
+                        cell = f"{val:.3f} {color}{sign}{delta:.3f}{reset}"
+
+                line += f"  {cell:>{col_w}}"
+
+            print(line)
+
+    print()
 
 
 # --- Main ---
@@ -517,6 +626,10 @@ def main():
                         help="Save JSON report to path (default: auto-timestamped)")
     parser.add_argument("--compare", type=Path, default=None,
                         help="Compare against previous JSON report")
+    parser.add_argument("--ablation", type=str, default=None,
+                        help="Ablation matrix: comma-separated report paths (no live eval)")
+    parser.add_argument("--name", type=str, default=None,
+                        help="Human-readable name for this evaluation run (stored in report)")
     parser.add_argument("--category", type=str, default=None,
                         help="Filter queries by category")
     parser.add_argument("--latency", action="store_true",
@@ -524,6 +637,12 @@ def main():
     parser.add_argument("--verbose", action="store_true",
                         help="Print per-query detail")
     args = parser.parse_args()
+
+    # Ablation matrix — no live eval, just compare saved reports
+    if args.ablation:
+        paths = [Path(p.strip()) for p in args.ablation.split(",")]
+        print_ablation_matrix(paths)
+        return
 
     # Parse K values
     k_values = [int(k.strip()) for k in args.k.split(",")]
@@ -583,7 +702,7 @@ def main():
         print_category_breakdown(results, k_values)
 
     # Save JSON report
-    report = build_json_report(results, len(queries), args.limit, k_values)
+    report = build_json_report(results, len(queries), args.limit, k_values, name=args.name)
 
     if args.output:
         output_path = args.output
