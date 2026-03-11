@@ -53,14 +53,22 @@ def gh_json(args: list[str]) -> dict | list | None:
         return None
 
 
+REPO_FIELDS = (
+    "name,description,url,primaryLanguage,repositoryTopics,isPrivate,"
+    "createdAt,updatedAt,defaultBranchRef,stargazerCount,forkCount,issues"
+)
+
+
 def fetch_repos(owner: str) -> list[dict]:
-    """Fetch all repos for an owner via gh repo list."""
+    """Fetch all repos for an owner via gh repo list.
+
+    gh handles pagination internally — --limit sets total count.
+    GitHub API max is 1000 per listing; set to 4000 to be safe.
+    """
     result = subprocess.run(
-        ["gh", "repo", "list", owner, "--json",
-         "name,description,url,primaryLanguage,repositoryTopics,isPrivate,"
-         "createdAt,updatedAt,defaultBranchRef,stargazerCount,forkCount,"
-         "issues", "--limit", "500"],
-        capture_output=True, text=True, timeout=60,
+        ["gh", "repo", "list", owner, "--json", REPO_FIELDS,
+         "--limit", "4000"],
+        capture_output=True, text=True, timeout=120,
     )
     if result.returncode == 0:
         return json.loads(result.stdout)
@@ -68,13 +76,29 @@ def fetch_repos(owner: str) -> list[dict]:
 
 
 def fetch_readme(owner: str, repo_name: str) -> str:
-    """Fetch README content for a repo."""
-    data = gh_json(["api", f"repos/{owner}/{repo_name}/readme"])
-    if data and data.get("content"):
-        try:
-            return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
-        except Exception:
+    """Fetch README content for a repo. Handles rate limits with backoff."""
+    for attempt in range(3):
+        result = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo_name}/readme"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            if "rate limit" in result.stderr.lower() or "403" in result.stderr:
+                wait = 5 * (attempt + 1)
+                print(f"    Rate limited fetching README for {repo_name}, waiting {wait}s...")
+                time.sleep(wait)
+                continue
             return ""
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return ""
+        if data and data.get("content"):
+            try:
+                return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+            except Exception:
+                return ""
+        return ""
     return ""
 
 
@@ -168,8 +192,19 @@ def main():
         return
 
     conn = get_conn()
+
+    # Check existing RIDs for insert vs update tracking
+    existing = set()
+    rows = conn.execute(
+        "SELECT rid FROM bundles WHERE namespace = %s", (NAMESPACE,)
+    ).fetchall()
+    existing = {r["rid"] for r in rows}
+    print(f"Already ingested: {len(existing)}")
+
     stats = {"inserted": 0, "updated": 0, "errors": 0}
     start = time.time()
+    batch = []
+    BATCH_SIZE = 50
 
     for i, repo in enumerate(repos):
         name = repo.get("name") or ""
@@ -194,27 +229,35 @@ def main():
         else:
             created_at = datetime.now(timezone.utc)
 
-        try:
-            conn.execute(
-                """
-                INSERT INTO bundles (rid, namespace, reference, contents, search_text, sha256_hash, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (rid) DO UPDATE SET
-                    contents = EXCLUDED.contents,
-                    search_text = EXCLUDED.search_text,
-                    sha256_hash = EXCLUDED.sha256_hash,
-                    updated_at = NOW()
-                """,
-                (rid, NAMESPACE, reference, Jsonb(contents),
-                 search_text, content_hash, created_at),
-            )
-            stats["inserted"] += 1
-        except Exception as e:
-            print(f"  Error on {rid}: {e}")
-            stats["errors"] += 1
+        batch.append((rid, reference, contents, search_text, content_hash, created_at, rid in existing))
+
+        if len(batch) >= BATCH_SIZE or i == len(repos) - 1:
+            try:
+                with conn.transaction():
+                    for rid, ref, cont, stxt, chash, cat, is_update in batch:
+                        conn.execute(
+                            """
+                            INSERT INTO bundles (rid, namespace, reference, contents, search_text, sha256_hash, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                            ON CONFLICT (rid) DO UPDATE SET
+                                contents = EXCLUDED.contents,
+                                search_text = EXCLUDED.search_text,
+                                sha256_hash = EXCLUDED.sha256_hash,
+                                updated_at = NOW()
+                            """,
+                            (rid, NAMESPACE, ref, Jsonb(cont), stxt, chash, cat),
+                        )
+                        if is_update:
+                            stats["updated"] += 1
+                        else:
+                            stats["inserted"] += 1
+            except Exception as e:
+                print(f"  Batch error: {e}")
+                stats["errors"] += len(batch)
+            batch = []
 
         if (i + 1) % 10 == 0:
-            print(f"  [{i+1}/{len(repos)}] {stats['inserted']} inserted")
+            print(f"  [{i+1}/{len(repos)}] {stats['inserted']} inserted, {stats['updated']} updated")
 
     elapsed = time.time() - start
 
@@ -225,7 +268,7 @@ def main():
     total = conn.execute("SELECT count(*) AS cnt FROM bundles").fetchone()
 
     print(f"\n=== Summary ({elapsed:.1f}s) ===")
-    print(f"  Inserted: {stats['inserted']}, Errors: {stats['errors']}")
+    print(f"  Inserted: {stats['inserted']}, Updated: {stats['updated']}, Errors: {stats['errors']}")
     print(f"  {NAMESPACE}: {row['cnt']}")
     print(f"  Total bundles: {total['cnt']}")
 
