@@ -166,6 +166,16 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
                 text += "\n" + mem_text
         return text[:_MAX_SEARCH_TEXT]
 
+    if namespace == "legion.claude-transcript":
+        parts = []
+        cwd = contents.get("cwd") or ""
+        if cwd:
+            parts.append(cwd)
+        summary = contents.get("summary") or ""
+        if summary:
+            parts.append(summary)
+        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+
     # Fallback: JSON dump
     text = json.dumps(contents)
     return text[:_MAX_SEARCH_TEXT]
