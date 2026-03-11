@@ -125,6 +125,47 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         text = contents.get("content", "") or ""
         return text[:_MAX_SEARCH_TEXT]
 
+    if namespace == "legion.claude-conversation":
+        parts = []
+        name = contents.get("name") or ""
+        if name:
+            parts.append(name)
+        summary = contents.get("summary") or ""
+        if summary:
+            parts.append(summary)
+        for msg in contents.get("chat_messages", []):
+            text = msg.get("text") or ""
+            if text:
+                parts.append(text)
+        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+
+    if namespace == "legion.claude-project":
+        parts = []
+        name = contents.get("name") or ""
+        if name:
+            parts.append(name)
+        desc = contents.get("description") or ""
+        if desc:
+            parts.append(desc)
+        prompt = contents.get("prompt_template") or ""
+        if prompt:
+            parts.append(prompt)
+        for doc in contents.get("docs", []):
+            filename = doc.get("filename") or ""
+            if filename:
+                parts.append(filename)
+            content = doc.get("content") or ""
+            if content:
+                parts.append(content)
+        return "\n".join(parts)[:_MAX_SEARCH_TEXT]
+
+    if namespace == "legion.claude-memory":
+        text = contents.get("conversations_memory", "")
+        for _uuid, mem_text in contents.get("project_memories", {}).items():
+            if isinstance(mem_text, str):
+                text += "\n" + mem_text
+        return text[:_MAX_SEARCH_TEXT]
+
     # Fallback: JSON dump
     text = json.dumps(contents)
     return text[:_MAX_SEARCH_TEXT]
