@@ -1,6 +1,7 @@
 """PostgreSQL storage for KOI-net bundles with full-text search and vector embeddings."""
 
 import json
+from importlib.resources import files as pkg_files
 from datetime import datetime, timezone
 
 import structlog
@@ -42,6 +43,59 @@ CREATE TABLE IF NOT EXISTS embedding_configs (
     description TEXT,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+ENTITIES_SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE TABLE IF NOT EXISTS entities (
+    entity_id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    supertype TEXT NOT NULL DEFAULT '',
+    name_normalized TEXT NOT NULL,
+    description TEXT,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    mention_count INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(name_normalized, entity_type)
+);
+CREATE INDEX IF NOT EXISTS idx_entities_name_norm ON entities(name_normalized);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_supertype ON entities(supertype);
+CREATE INDEX IF NOT EXISTS idx_entities_trgm ON entities USING GIN(name_normalized gin_trgm_ops);
+
+CREATE TABLE IF NOT EXISTS bundle_entities (
+    rid TEXT NOT NULL REFERENCES bundles(rid) ON DELETE CASCADE,
+    entity_id INTEGER NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+    mention_count INTEGER NOT NULL DEFAULT 1,
+    confidence FLOAT NOT NULL DEFAULT 1.0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (rid, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bundle_entities_entity ON bundle_entities(entity_id);
+
+CREATE TABLE IF NOT EXISTS relations (
+    relation_id SERIAL PRIMARY KEY,
+    source_entity_id INTEGER NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+    target_entity_id INTEGER NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+    relation_type TEXT NOT NULL,
+    confidence FLOAT NOT NULL DEFAULT 1.0,
+    evidence TEXT DEFAULT '',
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    mention_count INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(source_entity_id, target_entity_id, relation_type)
+);
+CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target_entity_id);
+
+CREATE TABLE IF NOT EXISTS bundle_relations (
+    rid TEXT NOT NULL REFERENCES bundles(rid) ON DELETE CASCADE,
+    relation_id INTEGER NOT NULL REFERENCES relations(relation_id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (rid, relation_id)
 );
 """
 
@@ -200,6 +254,24 @@ class PostgresStorage:
         except psycopg.errors.InsufficientPrivilege:
             pass
         conn.execute(EMBEDDING_CONFIGS_SQL)
+
+        # Entity extraction tables (pg_trgm for fuzzy name search)
+        try:
+            conn.execute(ENTITIES_SCHEMA_SQL)
+        except psycopg.errors.InsufficientPrivilege:
+            log.warning("postgres.pg_trgm_unavailable")
+        except Exception as e:
+            log.warning("postgres.entities_schema_error", error=str(e))
+
+        # Event system trigger (Phase 1) — fires PG NOTIFY on bundle changes
+        try:
+            from pathlib import Path
+            trigger_sql_path = Path(__file__).parent.parent / "events" / "pg_trigger.sql"
+            trigger_sql = trigger_sql_path.read_text()
+            conn.execute(trigger_sql)
+            log.info("postgres.trigger_installed", trigger="bundles_notify")
+        except Exception as e:
+            log.warning("postgres.trigger_error", error=str(e))
 
         log.info("postgres.initialized")
 
@@ -619,6 +691,247 @@ class PostgresStorage:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # -- Entity extraction methods --
+
+    def upsert_bundle_entities(self, rid: str, entities: list[dict]) -> int:
+        """Store extracted entities for a bundle.
+
+        Each entity dict: {name, entity_type, supertype, confidence, name_normalized}.
+        Upserts into entities table, links via bundle_entities.
+        Returns number of entities linked.
+        """
+        if not entities:
+            return 0
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc)
+        linked = 0
+
+        # Clear old extractions for this bundle
+        conn.execute("DELETE FROM bundle_entities WHERE rid = %s", (rid,))
+
+        with conn.transaction():
+            with conn.cursor() as cur:
+                for e in entities:
+                    name_norm = e["name_normalized"]
+                    # Upsert entity
+                    cur.execute(
+                        """
+                        INSERT INTO entities (name, entity_type, supertype, name_normalized,
+                                              first_seen, last_seen, mention_count)
+                        VALUES (%(name)s, %(entity_type)s, %(supertype)s, %(name_normalized)s,
+                                %(now)s, %(now)s, 1)
+                        ON CONFLICT (name_normalized, entity_type) DO UPDATE SET
+                            last_seen = %(now)s,
+                            mention_count = entities.mention_count + 1,
+                            name = CASE
+                                WHEN length(%(name)s) > length(entities.name)
+                                THEN %(name)s ELSE entities.name
+                            END
+                        RETURNING entity_id
+                        """,
+                        {
+                            "name": e["name"],
+                            "entity_type": e["entity_type"],
+                            "supertype": e.get("supertype", ""),
+                            "name_normalized": name_norm,
+                            "now": now,
+                        },
+                    )
+                    row = cur.fetchone()
+                    entity_id = row["entity_id"]
+
+                    # Link to bundle
+                    cur.execute(
+                        """
+                        INSERT INTO bundle_entities (rid, entity_id, confidence, created_at)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (rid, entity_id) DO UPDATE SET
+                            confidence = GREATEST(bundle_entities.confidence, EXCLUDED.confidence)
+                        """,
+                        (rid, entity_id, e.get("confidence", 1.0), now),
+                    )
+                    linked += 1
+
+        return linked
+
+    def get_bundle_entities(self, rid: str) -> list[dict]:
+        """Get entities extracted from a specific bundle."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            """
+            SELECT e.entity_id, e.name, e.entity_type, e.supertype,
+                   be.confidence, e.mention_count
+            FROM bundle_entities be
+            JOIN entities e ON e.entity_id = be.entity_id
+            WHERE be.rid = %s
+            ORDER BY be.confidence DESC
+            """,
+            (rid,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def find_bundles_by_entity(
+        self, name: str, entity_type: str | None = None, limit: int = 20
+    ) -> list[dict]:
+        """Find bundles mentioning an entity. Trigram matching on name."""
+        conn = self._get_conn()
+        name_norm = " ".join(name.lower().split())
+        if entity_type:
+            rows = conn.execute(
+                """
+                SELECT b.rid, b.namespace, b.reference, be.confidence,
+                       e.name AS entity_name, e.entity_type,
+                       similarity(e.name_normalized, %s) AS sim
+                FROM bundle_entities be
+                JOIN entities e ON e.entity_id = be.entity_id
+                JOIN bundles b ON b.rid = be.rid
+                WHERE e.name_normalized %% %s AND e.entity_type = %s
+                ORDER BY sim DESC, be.confidence DESC
+                LIMIT %s
+                """,
+                (name_norm, name_norm, entity_type, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT b.rid, b.namespace, b.reference, be.confidence,
+                       e.name AS entity_name, e.entity_type,
+                       similarity(e.name_normalized, %s) AS sim
+                FROM bundle_entities be
+                JOIN entities e ON e.entity_id = be.entity_id
+                JOIN bundles b ON b.rid = be.rid
+                WHERE e.name_normalized %% %s
+                ORDER BY sim DESC, be.confidence DESC
+                LIMIT %s
+                """,
+                (name_norm, name_norm, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def find_entity_cooccurrence(self, name: str, limit: int = 20) -> list[dict]:
+        """Find entities that co-appear in bundles with the given entity."""
+        conn = self._get_conn()
+        name_norm = " ".join(name.lower().split())
+        rows = conn.execute(
+            """
+            SELECT e2.name, e2.entity_type, e2.supertype,
+                   count(DISTINCT be2.rid) AS shared_bundles,
+                   e2.mention_count
+            FROM entities e1
+            JOIN bundle_entities be1 ON be1.entity_id = e1.entity_id
+            JOIN bundle_entities be2 ON be2.rid = be1.rid AND be2.entity_id != e1.entity_id
+            JOIN entities e2 ON e2.entity_id = be2.entity_id
+            WHERE e1.name_normalized %% %s
+            GROUP BY e2.entity_id, e2.name, e2.entity_type, e2.supertype, e2.mention_count
+            ORDER BY shared_bundles DESC, e2.mention_count DESC
+            LIMIT %s
+            """,
+            (name_norm, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def search_entities(
+        self,
+        query: str,
+        entity_type: str | None = None,
+        supertype: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Search entities by name with optional type/supertype filter."""
+        conn = self._get_conn()
+        query_norm = " ".join(query.lower().split())
+        conditions = ["e.name_normalized %% %s"]
+        params: list = [query_norm]
+
+        if entity_type:
+            conditions.append("e.entity_type = %s")
+            params.append(entity_type)
+        if supertype:
+            conditions.append("e.supertype = %s")
+            params.append(supertype)
+
+        where = " AND ".join(conditions)
+        params.extend([query_norm, query_norm, limit])
+
+        rows = conn.execute(
+            f"""
+            SELECT e.entity_id, e.name, e.entity_type, e.supertype,
+                   e.mention_count, e.first_seen, e.last_seen,
+                   similarity(e.name_normalized, %s) AS sim
+            FROM entities e
+            WHERE {where}
+            ORDER BY similarity(e.name_normalized, %s) DESC
+            LIMIT %s
+            """,
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_unextracted_rids(
+        self, namespace: str | None = None, limit: int = 500
+    ) -> list[dict]:
+        """Find bundles with no entity extractions."""
+        conn = self._get_conn()
+        if namespace:
+            rows = conn.execute(
+                """
+                SELECT b.rid, b.namespace, b.search_text
+                FROM bundles b
+                LEFT JOIN bundle_entities be ON b.rid = be.rid
+                WHERE be.rid IS NULL AND b.namespace = %s
+                ORDER BY b.created_at
+                LIMIT %s
+                """,
+                (namespace, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT b.rid, b.namespace, b.search_text
+                FROM bundles b
+                LEFT JOIN bundle_entities be ON b.rid = be.rid
+                WHERE be.rid IS NULL
+                ORDER BY b.created_at
+                LIMIT %s
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_entity_stats(self) -> dict:
+        """Entity extraction statistics."""
+        conn = self._get_conn()
+        total = conn.execute("SELECT count(*) AS cnt FROM entities").fetchone()
+        by_type = conn.execute(
+            "SELECT entity_type, count(*) AS cnt FROM entities GROUP BY entity_type ORDER BY cnt DESC"
+        ).fetchall()
+        by_supertype = conn.execute(
+            "SELECT supertype, count(*) AS cnt FROM entities GROUP BY supertype ORDER BY cnt DESC"
+        ).fetchall()
+        coverage = conn.execute(
+            """
+            SELECT
+                (SELECT count(DISTINCT rid) FROM bundle_entities) AS extracted,
+                (SELECT count(*) FROM bundles) AS total
+            """
+        ).fetchone()
+        top_entities = conn.execute(
+            """
+            SELECT name, entity_type, supertype, mention_count
+            FROM entities ORDER BY mention_count DESC LIMIT 20
+            """
+        ).fetchall()
+        return {
+            "total_entities": total["cnt"],
+            "by_type": {r["entity_type"]: r["cnt"] for r in by_type},
+            "by_supertype": {r["supertype"]: r["cnt"] for r in by_supertype},
+            "extraction_coverage": {
+                "bundles_with_entities": coverage["extracted"],
+                "total_bundles": coverage["total"],
+            },
+            "top_entities": [dict(r) for r in top_entities],
+        }
 
     def close(self):
         if self._conn and not self._conn.closed:

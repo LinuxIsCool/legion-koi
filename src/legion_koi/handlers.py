@@ -159,6 +159,41 @@ def _embed_bundle(rid: str, namespace: str, contents: dict) -> None:
         slog.warning("embedding.inline_error", rid=rid, exc_info=True)
 
 
+def _extract_bundle_entities(rid: str, namespace: str, contents: dict) -> None:
+    """Extract entities from a bundle and store them. Best-effort."""
+    if _postgres_storage is None:
+        return
+    from .constants import ENTITY_EXTRACTION_SKIP_NAMESPACES
+    if namespace in ENTITY_EXTRACTION_SKIP_NAMESPACES:
+        return
+    try:
+        from .extraction import run_extraction
+        search_text = _extract_search_text(namespace, contents)
+        if not search_text or not search_text.strip():
+            return
+
+        result = run_extraction(rid, namespace, search_text)
+        if not result.entities:
+            return
+
+        from .extraction import normalize_entity_name
+        entity_dicts = []
+        for e in result.entities:
+            name_normalized = normalize_entity_name(e.name)
+            entity_dicts.append({
+                "name": e.name,
+                "entity_type": e.entity_type,
+                "supertype": e.supertype,
+                "confidence": e.confidence,
+                "name_normalized": name_normalized,
+            })
+
+        _postgres_storage.upsert_bundle_entities(rid, entity_dicts)
+        slog.debug("extraction.inline_done", rid=rid, entities=len(entity_dicts))
+    except Exception:
+        slog.warning("extraction.inline_error", rid=rid, exc_info=True)
+
+
 @dataclass
 class PostgresStorageHandler(KnowledgeHandler):
     """Persist processed bundles to PostgreSQL for search and retrieval."""
@@ -180,8 +215,12 @@ class PostgresStorageHandler(KnowledgeHandler):
             slog.exception("postgres.upsert_error", rid=str(kobj.rid))
             return
 
-        # Inline embedding — best-effort, never blocks bundle storage
-        _embed_bundle(str(kobj.rid), kobj.rid.namespace, kobj.contents)
+        # Embedding and entity extraction are now handled asynchronously
+        # by event consumers (Phase 1). The PG trigger on bundles fires
+        # a NOTIFY, which the PG listener bridges to Redis Streams,
+        # where the embed and extract consumers pick it up.
+        # The _embed_bundle() and _extract_bundle_entities() functions
+        # remain available for manual backfill use.
 
 
 @dataclass

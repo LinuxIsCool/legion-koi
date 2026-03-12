@@ -1,0 +1,29 @@
+{# Default NER prompt template — reserved for future use with Jinja2 rendering.
+   Currently the prompt is built inline in backends/llm.py for simplicity.
+   This template will be used when we add few-shot examples or more complex prompting. #}
+
+Extract named entities from the following text. Return a JSON object with an "entities" array.
+
+Entity types to extract:
+{% for name, desc in type_descriptions.items() %}
+  - {{ name }}: {{ desc }}
+{% endfor %}
+
+{% if prompt_hint %}
+Domain guidance: {{ prompt_hint }}
+{% endif %}
+
+Rules:
+- Extract specific, named entities only — not generic concepts
+- Use the exact entity type names listed above
+- Confidence: 1.0 = explicitly named, 0.7 = strongly implied, 0.5 = inferred
+- Prefer recall over precision — include borderline entities with lower confidence
+- Deduplicate: use the most complete form of a name
+- Maximum {{ max_entities }} entities
+
+Text:
+---
+{{ text }}
+---
+
+Return ONLY valid JSON: {"entities": [{"name": "...", "type": "...", "confidence": 0.9}, ...]}

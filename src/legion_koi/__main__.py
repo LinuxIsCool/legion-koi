@@ -13,6 +13,10 @@ from .sensors.logging_sensor import LoggingSensor
 from .sensors.recording_sensor import RecordingSensor
 from .sensors.message_sensor import MessageSensor
 from .storage.postgres import PostgresStorage
+from .events.bus import EventBus
+from .events.pg_listener import PgListener
+from .events.consumers.embed_consumer import EmbedConsumer
+from .events.consumers.extract_consumer import ExtractConsumer
 log = structlog.stdlib.get_logger()
 
 
@@ -125,6 +129,32 @@ def main():
     if storage:
         _backfill_postgres(storage, node.config.koi_net.cache_directory_path)
 
+    # Event system (Phase 1) — PG NOTIFY → Redis Streams → consumers
+    event_bus = None
+    pg_listener = None
+    embed_consumer = None
+    extract_consumer = None
+    if storage:
+        try:
+            event_bus = EventBus()
+            if event_bus.ping():
+                pg_listener = PgListener(dsn=node.config.postgres.dsn, bus=event_bus)
+                pg_listener.start()
+
+                embed_consumer = EmbedConsumer(bus=event_bus, storage=storage)
+                embed_consumer.start()
+
+                extract_consumer = ExtractConsumer(bus=event_bus, storage=storage)
+                extract_consumer.start()
+
+                log.info("events.started", consumers=["embed", "extract"])
+            else:
+                log.warning("events.redis_unavailable", msg="Event system disabled — Redis not reachable")
+                event_bus = None
+        except Exception:
+            log.warning("events.startup_error", exc_info=True, msg="Event system disabled")
+            event_bus = None
+
     # Initial scans
     all_sensors = [journal_sensor, venture_sensor, logging_sensor, recording_sensor, message_sensor]
     for sensor in all_sensors:
@@ -140,6 +170,16 @@ def main():
     try:
         node.run()
     finally:
+        # Shut down event consumers first (they depend on storage)
+        if extract_consumer:
+            extract_consumer.stop()
+        if embed_consumer:
+            embed_consumer.stop()
+        if pg_listener:
+            pg_listener.stop()
+        if event_bus:
+            event_bus.close()
+
         for sensor in all_sensors:
             sensor.stop()
         if storage:

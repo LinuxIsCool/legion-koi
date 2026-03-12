@@ -313,8 +313,69 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="find_entity_bundles",
+            description="Find all bundles mentioning a specific entity. Uses trigram fuzzy matching on entity names.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity": {
+                        "type": "string",
+                        "description": "Entity name to search for (e.g. 'FalkorDB', 'Shawn', 'KOI-net')",
+                    },
+                    "entity_type": {
+                        "type": "string",
+                        "description": "Optional entity type filter (e.g. 'Person', 'Tool', 'Concept')",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results (default 20)",
+                        "default": 20,
+                    },
+                },
+                "required": ["entity"],
+            },
+        ),
+        Tool(
+            name="entity_cooccurrence",
+            description="Find entities that frequently co-appear with the given entity across bundles. Reveals connections like 'who works on what' and 'which tools are used together'.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity": {
+                        "type": "string",
+                        "description": "Entity name to find co-occurrences for",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max co-occurring entities (default 20)",
+                        "default": 20,
+                    },
+                },
+                "required": ["entity"],
+            },
+        ),
+        Tool(
+            name="entity_graph",
+            description="Show an entity's neighborhood: co-occurring entities, types, bundle count. Combines KOI PostgreSQL entities with hippo FalkorDB graph when available.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity": {
+                        "type": "string",
+                        "description": "Entity name to explore",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max neighbors (default 20)",
+                        "default": 20,
+                    },
+                },
+                "required": ["entity"],
+            },
+        ),
+        Tool(
             name="koi_stats",
-            description="Get bundle counts per namespace and embedding coverage in the knowledge graph.",
+            description="Get bundle counts per namespace, embedding coverage, and entity extraction statistics.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -526,6 +587,97 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         except Exception as e:
             return [TextContent(type="text", text=f"Entity search error: {e}")]
 
+    elif name == "find_entity_bundles":
+        try:
+            results = storage.find_bundles_by_entity(
+                name=arguments["entity"],
+                entity_type=arguments.get("entity_type"),
+                limit=arguments.get("limit", 20),
+            )
+            if not results:
+                return [TextContent(type="text", text=f"No bundles found mentioning entity: {arguments['entity']}")]
+            lines = []
+            for i, r in enumerate(results, 1):
+                lines.append(
+                    f"{i}. [{r['namespace']}] {r['rid']}\n"
+                    f"   entity: {r['entity_name']} ({r['entity_type']}) sim={r['sim']:.3f} conf={r['confidence']:.2f}"
+                )
+            return [TextContent(type="text", text=f"Bundles mentioning '{arguments['entity']}':\n\n" + "\n\n".join(lines))]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Entity search error: {e}")]
+
+    elif name == "entity_cooccurrence":
+        try:
+            results = storage.find_entity_cooccurrence(
+                name=arguments["entity"],
+                limit=arguments.get("limit", 20),
+            )
+            if not results:
+                return [TextContent(type="text", text=f"No co-occurring entities found for: {arguments['entity']}")]
+            lines = [f"Entities co-occurring with '{arguments['entity']}':\n"]
+            for r in results:
+                lines.append(
+                    f"  {r['name']} ({r['entity_type']}/{r['supertype']}) "
+                    f"— {r['shared_bundles']} shared bundles, {r['mention_count']} total mentions"
+                )
+            return [TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Co-occurrence error: {e}")]
+
+    elif name == "entity_graph":
+        try:
+            entity_name = arguments["entity"]
+            limit = arguments.get("limit", 20)
+
+            # KOI entities
+            matches = storage.search_entities(entity_name, limit=1)
+            if not matches:
+                return [TextContent(type="text", text=f"Entity not found: {entity_name}")]
+
+            entity = matches[0]
+            cooccurrences = storage.find_entity_cooccurrence(entity_name, limit=limit)
+            bundles = storage.find_bundles_by_entity(entity_name, limit=limit)
+
+            lines = [
+                f"# Entity: {entity['name']} ({entity['entity_type']}/{entity['supertype']})",
+                f"Mentions: {entity['mention_count']} | First: {str(entity['first_seen'])[:10]} | Last: {str(entity['last_seen'])[:10]}",
+                f"\n## Bundles ({len(bundles)})",
+            ]
+            for b in bundles[:10]:
+                lines.append(f"  - [{b['namespace']}] {b['rid']} (conf={b['confidence']:.2f})")
+
+            lines.append(f"\n## Co-occurring entities ({len(cooccurrences)})")
+            for c in cooccurrences[:15]:
+                lines.append(
+                    f"  - {c['name']} ({c['entity_type']}) — {c['shared_bundles']} shared"
+                )
+
+            # Try hippo bridge for additional graph data
+            try:
+                from .hippo_bridge import HippoBridge
+                bridge = HippoBridge(
+                    redis_host=HIPPO_REDIS_HOST,
+                    redis_port=HIPPO_REDIS_PORT,
+                    graph_name=HIPPO_GRAPH_NAME,
+                )
+                # Use enrich_results to get triples for the entity's bundles
+                enrichable = [{"rid": b["rid"]} for b in bundles[:5]]
+                enriched = bridge.enrich_results(enrichable)
+                all_triples = []
+                for r in enriched:
+                    all_triples.extend(r.get("entities", []))
+                if all_triples:
+                    unique_triples = list(dict.fromkeys(all_triples))
+                    lines.append(f"\n## Hippo graph triples ({len(unique_triples)})")
+                    for t in unique_triples[:10]:
+                        lines.append(f"  - {t}")
+            except Exception:
+                pass
+
+            return [TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Entity graph error: {e}")]
+
     elif name == "koi_stats":
         stats = storage.get_stats()
         config_stats = storage.get_config_stats()
@@ -535,6 +687,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             "embedding_configs": configs,
             "config_embeddings": config_stats,
         }
+        # Add entity stats
+        try:
+            entity_stats = storage.get_entity_stats()
+            output["entities"] = entity_stats
+        except Exception:
+            output["entities"] = "not available (tables may not exist)"
         return [TextContent(type="text", text=json.dumps(output, indent=2, default=str))]
 
     return [TextContent(type="text", text=f"Unknown tool: {name}")]

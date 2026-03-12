@@ -60,6 +60,35 @@ ENTITY_RRF_BONUS = 0.01
 HNSW_M = 16
 HNSW_EF_CONSTRUCTION = 64
 
+# --- Entity extraction ---
+# Max chars per LLM extraction call — balances cost vs context
+ENTITY_EXTRACT_MAX_CHARS = 3000
+# Bundles per backfill iteration (limits memory, enables progress logging)
+ENTITY_BACKFILL_BATCH_SIZE = 50
+# Cap per chunk to prevent hallucination on rich documents
+ENTITY_MAX_PER_CHUNK = 30
+# Namespaces to skip — koi-net.node is internal protocol state
+ENTITY_EXTRACTION_SKIP_NAMESPACES = frozenset({"koi-net.node"})
+# Discard entities below this confidence — noise is recoverable, but clutter costs
+ENTITY_DEFAULT_CONFIDENCE_FLOOR = 0.3
+
 # --- Retry / backoff ---
 MAX_RETRIES = 3
 RETRY_BACKOFF_SECONDS = [2, 5, 15]
+
+# --- Event system (Phase 1) ---
+# Redis connection for event bus (reuses FalkorDB container)
+EVENT_REDIS_HOST = "localhost"
+EVENT_REDIS_PORT = 6380  # FalkorDB container, same as HIPPO_REDIS_PORT
+# Stream naming: koi:events:{event_type}
+EVENT_STREAM_PREFIX = "koi:events:"
+# Dead letter queue: koi:dlq:{stream_name}
+EVENT_DLQ_PREFIX = "koi:dlq:"
+# PostgreSQL NOTIFY channel name
+EVENT_PG_CHANNEL = "koi_events"
+# Consumer polling: how many messages per read
+EVENT_CONSUMER_POLL_BATCH = 10
+# Consumer polling: block timeout in milliseconds (2s balances latency vs CPU)
+EVENT_CONSUMER_BLOCK_MS = 2000
+# Max retries before sending to dead letter queue
+EVENT_DLQ_MAX_RETRIES = 3

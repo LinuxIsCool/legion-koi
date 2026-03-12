@@ -1,0 +1,12 @@
+# Fast pipeline — regex only, zero API cost. Baseline for ablation.
+
+version: "1.0"
+name: "fast"
+stages:
+  regex:
+    backend: regex
+    params: {}
+  resolve:
+    backend: fuzzy
+    params:
+      similarity_threshold: 0.85

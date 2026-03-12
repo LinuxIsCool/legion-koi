@@ -1,0 +1,62 @@
+# Entity type ontology — two-tier: universal supertypes + domain-specific subtypes.
+# Edit this file to add entity types. No Python changes needed.
+
+supertypes:
+  agent: "People, organizations, bots"
+  artifact: "Code, documents, recordings, tools"
+  concept: "Topics, patterns, principles, skills"
+  event: "Decisions, meetings, milestones"
+  place: "Locations, repositories, platforms"
+  action: "Intents, tasks, action items"
+  temporal: "Dates, periods, phases"
+
+domains:
+  journal:
+    namespaces: [legion.claude-journal]
+    prompt_hint: "Focus on technical decisions, tools being evaluated, and concepts explored. Journal entries are reflective — look for commitments and realizations."
+    types:
+      Person: {supertype: agent, description: "People mentioned in journal entries"}
+      Tool: {supertype: artifact, description: "Software tools, libraries, frameworks"}
+      Concept: {supertype: concept, description: "Ideas, principles, mental models"}
+      Project: {supertype: artifact, description: "Named projects or initiatives"}
+      Decision: {supertype: event, description: "Choices or commitments made"}
+      Organization: {supertype: agent, description: "Companies, teams, communities"}
+      Location: {supertype: place, description: "Machines, services, physical places"}
+
+  messages:
+    namespaces: [legion.claude-message]
+    prompt_hint: "Messages are conversational. Focus on people and topics discussed. Sender names are entity candidates."
+    types:
+      Person: {supertype: agent, description: "Message participants"}
+      Topic: {supertype: concept, description: "Subjects discussed"}
+      Organization: {supertype: agent, description: "Companies or groups mentioned"}
+      Tool: {supertype: artifact, description: "Software tools referenced"}
+
+  recordings:
+    namespaces: [legion.claude-recording]
+    prompt_hint: "Recordings are transcribed conversations. Look for speakers, decisions made, and projects discussed."
+    types:
+      Speaker: {supertype: agent, description: "People speaking in recordings"}
+      Topic: {supertype: concept, description: "Subjects discussed"}
+      Project: {supertype: artifact, description: "Projects mentioned"}
+      Decision: {supertype: event, description: "Decisions made during conversation"}
+      Organization: {supertype: agent, description: "Companies or groups referenced"}
+
+  code:
+    namespaces: [legion.claude-code, legion.claude-github]
+    prompt_hint: "Code context — focus on libraries, frameworks, services, and architectural patterns."
+    types:
+      Tool: {supertype: artifact, description: "Libraries, frameworks, services"}
+      Project: {supertype: artifact, description: "Repositories, packages"}
+      Person: {supertype: agent, description: "Contributors, authors"}
+      Concept: {supertype: concept, description: "Design patterns, architectures"}
+
+  web:
+    namespaces: [legion.claude-web.conversation]
+    prompt_hint: "Web conversations — extract key entities discussed across turns."
+    types:
+      Person: {supertype: agent, description: "People mentioned"}
+      Tool: {supertype: artifact, description: "Software tools discussed"}
+      Concept: {supertype: concept, description: "Topics explored"}
+      Organization: {supertype: agent, description: "Companies or groups"}
+      Project: {supertype: artifact, description: "Projects discussed"}

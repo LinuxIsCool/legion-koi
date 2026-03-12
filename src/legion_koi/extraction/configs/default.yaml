@@ -1,0 +1,18 @@
+# Default extraction pipeline configuration.
+# Swap configs for ablation: fast.yaml (regex only), gliner.yaml (future), etc.
+
+version: "1.0"
+name: "default"
+stages:
+  ner:
+    backend: llm
+    params:
+      # Resolved from TELUS env vars at runtime
+      model: "gpt-oss:120b"
+  regex:
+    backend: regex
+    params: {}
+  resolve:
+    backend: fuzzy
+    params:
+      similarity_threshold: 0.85
