@@ -48,6 +48,9 @@ EVAL_RESULTS_DIR = Path("scripts/eval_results")
 
 ALL_MODES = ["fts", "semantic", "hybrid", "hybrid+rerank-flag"]
 
+# Query type labels for per-type breakdown (Phase 4)
+QUERY_TYPES = ["keyword", "conceptual", "temporal", "hybrid"]
+
 
 # --- Metrics (pure Python) ---
 
@@ -529,6 +532,43 @@ def print_category_breakdown(results: list[dict], k_values: list[int]):
         print()
 
 
+def print_query_type_breakdown(results: list[dict], queries: list[dict], k_values: list[int]):
+    """Print per-query-type metrics (keyword, conceptual, temporal, hybrid)."""
+    try:
+        from legion_koi.retrieval.router import classify_query
+    except ImportError:
+        return
+
+    # Classify all queries
+    query_types = {}
+    for q in queries:
+        qtype = classify_query(q["query"])
+        query_types[q["id"]] = qtype.value
+
+    print("=== Per-Query-Type Breakdown ===\n")
+    k = k_values[1] if len(k_values) > 1 else k_values[0]
+
+    for r in results:
+        per_query = r.get("per_query", [])
+        type_groups: dict[str, list] = {}
+        for pq in per_query:
+            if "mrr" not in pq:
+                continue
+            qt = query_types.get(pq["id"], "unknown")
+            type_groups.setdefault(qt, []).append(pq)
+
+        if not type_groups:
+            continue
+
+        print(f"  {r['label']}:")
+        for qt in sorted(type_groups.keys()):
+            group = type_groups[qt]
+            avg_recall = sum(q.get(f"recall@{k}", 0) for q in group) / len(group)
+            avg_mrr = sum(q.get("mrr", 0) for q in group) / len(group)
+            print(f"    {qt:<15} n={len(group):<3} Recall@{k}={avg_recall:.3f}  MRR={avg_mrr:.3f}")
+        print()
+
+
 def build_json_report(
     results: list[dict], query_count: int, limit: int, k_values: list[int],
     name: str | None = None,
@@ -746,6 +786,7 @@ def main():
 
     if args.verbose:
         print_category_breakdown(results, k_values)
+        print_query_type_breakdown(results, queries, k_values)
 
     # Save JSON report
     report = build_json_report(results, len(queries), args.limit, k_values, name=args.name)

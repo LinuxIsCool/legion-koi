@@ -600,36 +600,31 @@ class PostgresStorage:
         query_embedding: list[float],
         namespace: str | None = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
-        k: int = RRF_K,
+        alpha: float | None = None,
     ) -> list[dict]:
-        """Hybrid search against a specific embedding config using RRF."""
+        """Hybrid search using convex combination of FTS and semantic scores.
+
+        score = alpha * fts_norm + (1 - alpha) * semantic_similarity
+
+        FTS scores normalized via min-max. Semantic scores (cosine similarity)
+        already in [0, 1]. Alpha defaults to CONVEX_ALPHA from constants.
+        """
+        from ..constants import CONVEX_ALPHA
+        from ..retrieval.fusion import convex_combine
+
+        if alpha is None:
+            alpha = CONVEX_ALPHA
+
         fetch = limit * RRF_FETCH_MULTIPLIER
         fts_results = self.search_text(query, namespace=namespace, limit=fetch)
         vec_results = self.search_config_semantic(config_id, query_embedding, namespace=namespace, limit=fetch)
 
-        scores: dict[str, float] = {}
-        bundle_map: dict[str, dict] = {}
+        results = convex_combine(fts_results, vec_results, alpha=alpha, limit=limit)
 
-        for rank, r in enumerate(fts_results, 1):
-            rid = r["rid"]
-            scores[rid] = scores.get(rid, 0) + 1.0 / (k + rank)
-            bundle_map[rid] = r
-
-        for rank, r in enumerate(vec_results, 1):
-            rid = r["rid"]
-            scores[rid] = scores.get(rid, 0) + 1.0 / (k + rank)
-            if rid not in bundle_map:
-                bundle_map[rid] = r
-            elif r.get("chunk_text") and not bundle_map[rid].get("chunk_text"):
-                # Preserve chunk_text from vector results for reranking
-                bundle_map[rid]["chunk_text"] = r["chunk_text"]
-
-        sorted_rids = sorted(scores, key=lambda rid: scores[rid], reverse=True)[:limit]
-        results = []
-        for rid in sorted_rids:
-            r = bundle_map[rid]
-            r["rrf_score"] = scores[rid]
-            results.append(r)
+        # Map fusion_score to rrf_score for backward compatibility with
+        # MCP tools and evaluation scripts that expect this key
+        for r in results:
+            r["rrf_score"] = r.pop("fusion_score", 0.0)
         return results
 
     def get_config_stats(self) -> list[dict]:

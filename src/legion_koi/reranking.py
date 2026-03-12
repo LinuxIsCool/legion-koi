@@ -228,6 +228,8 @@ def rerank_results(
     """
     from .constants import CHUNK_CHARS
 
+    from .chunking import chunk_text as do_chunk
+
     texts: list[str] = []
     for r in results:
         ct = r.get("chunk_text")
@@ -239,8 +241,11 @@ def rerank_results(
             if headline and len(headline) > 20:
                 texts.append(headline)
             else:
+                # Chunk instead of truncate (hard rule: never truncate data)
                 st = r.get("search_text", "") or ""
-                texts.append(st[:CHUNK_CHARS])
+                chunks = do_chunk(st)
+                # Use first chunk as reranking passage (best available without truncation)
+                texts.append(chunks[0] if chunks else st)
 
     if not texts:
         return results[:top_k]
