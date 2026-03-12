@@ -381,6 +381,14 @@ async def list_tools() -> list[Tool]:
                 "properties": {},
             },
         ),
+        Tool(
+            name="system_health",
+            description="Four-dimension health check: availability (services, DB, Redis), performance (throughput), quality (extraction/embedding coverage), growth (ingestion rate). Returns composite 0-100 score.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
 
 
@@ -454,10 +462,37 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     elif name == "hybrid_search":
         try:
+            from .retrieval.router import classify_query, QueryType
+            from .constants import (
+                CONVEX_ALPHA, ROUTER_ALPHA_KEYWORD,
+                ROUTER_ALPHA_CONCEPTUAL, ROUTER_ALPHA_TEMPORAL,
+            )
+
             config_id = _resolve_config(storage, arguments.get("config"))
             limit = arguments.get("limit", 20)
             rerank_enabled = arguments.get("rerank", False)
             query_text = arguments["query"]
+
+            # Query routing — select alpha based on query type
+            qtype = classify_query(query_text)
+            alpha_map = {
+                QueryType.KEYWORD: ROUTER_ALPHA_KEYWORD,
+                QueryType.CONCEPTUAL: ROUTER_ALPHA_CONCEPTUAL,
+                QueryType.TEMPORAL: ROUTER_ALPHA_TEMPORAL,
+                QueryType.HYBRID: CONVEX_ALPHA,
+            }
+            alpha = alpha_map.get(qtype, CONVEX_ALPHA)
+
+            # KEYWORD queries skip embedding entirely
+            if qtype == QueryType.KEYWORD:
+                results = storage.search_text(
+                    query=query_text,
+                    namespace=arguments.get("namespace"),
+                    limit=limit,
+                )
+                header = f"[route: {qtype.value}, FTS-only]\n\n"
+                return [TextContent(type="text", text=header + _format_results(results))]
+
             query_vec = _embed_for_config(storage, config_id, query_text)
 
             # Fetch more candidates when reranking (reranker reorders, needs headroom)
@@ -468,9 +503,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 query_embedding=query_vec,
                 namespace=arguments.get("namespace"),
                 limit=fetch_limit,
+                alpha=alpha,
             )
 
-            header = f"[config: {config_id}]"
+            header = f"[config: {config_id}] [route: {qtype.value}, α={alpha}]"
             if rerank_enabled and results:
                 backend = arguments.get("rerank_backend", "auto")
                 reranker = create_reranker(backend=backend)
@@ -694,6 +730,28 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         except Exception:
             output["entities"] = "not available (tables may not exist)"
         return [TextContent(type="text", text=json.dumps(output, indent=2, default=str))]
+
+    elif name == "system_health":
+        try:
+            from .observability.health import compute_health
+            from .events.bus import EventBus
+
+            event_bus = None
+            try:
+                event_bus = EventBus()
+                if not event_bus.ping():
+                    event_bus = None
+            except Exception:
+                pass
+
+            health = compute_health(storage=storage, event_bus=event_bus)
+            text = health.summary()
+
+            if event_bus:
+                event_bus.close()
+            return [TextContent(type="text", text=text)]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Health check error: {e}")]
 
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 

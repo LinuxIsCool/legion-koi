@@ -89,13 +89,38 @@ class EventBus:
         """Acknowledge successful processing of a message."""
         self._redis.xack(sname, group, entry_id)
 
+    def claim_pending(
+        self,
+        sname: str,
+        group: str,
+        consumer_id: str,
+        min_idle_ms: int = 5000,
+        count: int = 10,
+    ) -> list[tuple[str, dict[str, str]]]:
+        """Claim idle pending messages for retry.
+
+        Uses XAUTOCLAIM to take ownership of messages that have been pending
+        (unacked) for at least min_idle_ms. This enables retry of failed messages.
+        Returns list of (entry_id, fields_dict) tuples.
+        """
+        try:
+            # XAUTOCLAIM returns (next_start_id, [(entry_id, fields), ...], [deleted_ids])
+            result = self._redis.xautoclaim(
+                sname, group, consumer_id, min_idle_time=min_idle_ms, start_id="0-0", count=count
+            )
+            if not result or not result[1]:
+                return []
+            return [(eid, fields) for eid, fields in result[1]]
+        except Exception:
+            return []
+
     def send_to_dlq(self, sname: str, event: KoiEvent, error: str) -> None:
         """Move a failed event to the dead letter queue."""
         dname = dlq_name(sname)
         fields = event.to_stream_dict()
-        fields["error"] = str(error)[:500]
+        fields["error"] = error
         self._redis.xadd(dname, fields)
-        log.warning("event.dlq", stream=sname, dlq=dname, event_id=event.id, error=error[:200])
+        log.warning("event.dlq", stream=sname, dlq=dname, event_id=event.id, error=error)
 
     def pending_count(self, sname: str, group: str) -> int:
         """Number of pending (unacked) messages in a consumer group."""

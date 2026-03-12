@@ -31,9 +31,19 @@ DEFAULT_SEARCH_LIMIT = 20
 DEFAULT_THREAD_LIMIT = 50
 DEFAULT_LIST_LIMIT = 50
 # Reciprocal Rank Fusion smoothing constant (standard value from Cormack et al.)
+# DEPRECATED in Phase 4 — kept for backward compatibility with evaluation scripts
 RRF_K = 60
-# Fetch multiplier for hybrid search — get 3x results from each source for RRF merging
+# Fetch multiplier for hybrid search — get 3x results from each source for merging
 RRF_FETCH_MULTIPLIER = 3
+# Convex combination alpha (Phase 4) — FTS weight. Semantic weight = 1 - alpha.
+# 0.85 = FTS-dominant, reflects FTS baseline 0.967 Recall@10 vs semantic 0.072.
+# Tuned via scripts/tune_alpha.py against golden query set.
+CONVEX_ALPHA = 0.85
+# Query router alpha overrides per query type
+ROUTER_ALPHA_KEYWORD = 1.0    # FTS only — exact terms don't benefit from semantics
+ROUTER_ALPHA_CONCEPTUAL = 0.5 # Balanced — semantic captures meaning
+ROUTER_ALPHA_TEMPORAL = 1.0   # FTS only with date filtering
+# ROUTER_ALPHA_HYBRID uses CONVEX_ALPHA (the learned default)
 
 # --- Text limits ---
 # PostgreSQL tsvector max is 1MB; cap search_text well below that
@@ -92,3 +102,17 @@ EVENT_CONSUMER_POLL_BATCH = 10
 EVENT_CONSUMER_BLOCK_MS = 2000
 # Max retries before sending to dead letter queue
 EVENT_DLQ_MAX_RETRIES = 3
+
+# --- Observability (Phase 2) ---
+# Health dimension weights (must sum to 1.0)
+HEALTH_WEIGHT_AVAILABILITY = 0.35
+HEALTH_WEIGHT_PERFORMANCE = 0.25
+HEALTH_WEIGHT_QUALITY = 0.25
+HEALTH_WEIGHT_GROWTH = 0.15
+# systemd user services to monitor
+HEALTH_SERVICES = [
+    "hippo-graph.service",
+    "letta-stack.service",
+    "legion-koi.service",
+    "legion-messages.service",
+]

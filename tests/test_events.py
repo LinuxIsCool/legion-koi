@@ -166,8 +166,18 @@ class TestConsumer:
         c._process_message("1-0", stream_dict)  # fails, retry count = 1
         c._process_message("1-0", stream_dict)  # succeeds, retry count cleared
 
-        assert event.id not in c._retry_counts
+        # Retry tracking uses entry_id "1-0", not event.id
+        assert "1-0" not in c._retry_counts
         bus.send_to_dlq.assert_not_called()
+
+    def test_failure_does_not_ack(self):
+        """On failure (not DLQ), the message should NOT be acknowledged."""
+        bus = MagicMock()
+        c = _TestConsumer(bus, handler_fn=lambda e: (_ for _ in ()).throw(RuntimeError("fail")))
+        event = KoiEvent(type=BUNDLE_CREATED, subject="orn:test:noack")
+        c._process_message("2-0", event.to_stream_dict())
+        # Should NOT have been acked (retry semantics: leave for redelivery)
+        bus.ack.assert_not_called()
 
 
 # --- PG trigger SQL syntax test ---

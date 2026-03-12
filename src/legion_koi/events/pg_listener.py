@@ -52,35 +52,40 @@ class PgListener:
         log.info("pg_listener.stopped")
 
     def _listen_loop(self) -> None:
-        """Main loop: LISTEN on PG, bridge notifications to Redis."""
-        try:
-            conn = psycopg.connect(self._dsn, autocommit=True)
-            conn.execute(f"LISTEN {EVENT_PG_CHANNEL}")
-            log.info("pg_listener.listening", channel=EVENT_PG_CHANNEL)
+        """Main loop: LISTEN on PG, bridge notifications to Redis.
 
-            while not self._stop.is_set():
-                # poll with 1-second timeout so we can check the stop flag
-                gen = conn.notifies(timeout=1.0)
-                for notify in gen:
-                    try:
-                        self._handle_notify(notify)
-                    except Exception:
-                        log.warning("pg_listener.handle_error", exc_info=True)
-                    # Check stop between notifications
-                    if self._stop.is_set():
-                        break
-                    # Break out of generator to re-enter the while loop
-                    # (notifies() blocks until timeout or notification)
-                    break
-
-        except Exception:
-            if not self._stop.is_set():
-                log.exception("pg_listener.fatal")
-        finally:
+        Reconnects automatically on connection loss.
+        Processes ALL pending notifications per poll cycle (no single-notify bottleneck).
+        """
+        while not self._stop.is_set():
+            conn = None
             try:
-                conn.close()
+                conn = psycopg.connect(self._dsn, autocommit=True)
+                conn.execute(f"LISTEN {EVENT_PG_CHANNEL}")
+                log.info("pg_listener.listening", channel=EVENT_PG_CHANNEL)
+
+                while not self._stop.is_set():
+                    # notifies() yields all queued notifications, then blocks until
+                    # timeout or new notification arrives. Process them all.
+                    for notify in conn.notifies(timeout=1.0):
+                        try:
+                            self._handle_notify(notify)
+                        except Exception:
+                            log.warning("pg_listener.handle_error", exc_info=True)
+                        if self._stop.is_set():
+                            break
+
             except Exception:
-                pass
+                if not self._stop.is_set():
+                    log.warning("pg_listener.connection_lost", exc_info=True)
+                    # Wait before reconnecting
+                    self._stop.wait(timeout=5.0)
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
 
     def _handle_notify(self, notify) -> None:
         """Parse a PG notification and publish as a KoiEvent."""

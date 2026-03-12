@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import structlog
 
-from ...constants import ENTITY_EXTRACTION_SKIP_NAMESPACES
-from ...storage.postgres import _extract_search_text
+from ...storage.postgres import _extract_search_text, PostgresStorage
 from ..schemas import KoiEvent, BUNDLE_CREATED, EMBEDDING_COMPUTED
 from ..consumer import EventConsumer
 from ..bus import EventBus
@@ -27,7 +26,7 @@ class EmbedConsumer(EventConsumer):
     event_type = BUNDLE_CREATED
     group = "embed"
 
-    def __init__(self, bus: EventBus, storage, consumer_id: str | None = None):
+    def __init__(self, bus: EventBus, storage: PostgresStorage, consumer_id: str | None = None):
         super().__init__(bus, consumer_id)
         self._storage = storage
 

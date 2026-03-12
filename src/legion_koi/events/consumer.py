@@ -2,6 +2,11 @@
 
 Each consumer subscribes to a Redis Stream via a consumer group,
 processes events, and routes failures to a dead letter queue.
+
+Retry semantics: on failure, the message is NOT acknowledged — Redis
+will redeliver it on the next XREADGROUP call (via pending entries list).
+After EVENT_DLQ_MAX_RETRIES failures for the same entry, the message is
+moved to the dead letter queue and acknowledged.
 """
 
 from __future__ import annotations
@@ -16,6 +21,9 @@ from .schemas import KoiEvent
 from .bus import EventBus, stream_name
 
 log = structlog.stdlib.get_logger()
+
+# Max tracked pending entries before pruning stale ones
+_MAX_RETRY_TRACKING = 1000
 
 
 class EventConsumer(ABC):
@@ -35,6 +43,7 @@ class EventConsumer(ABC):
         self._consumer_id = consumer_id or f"{self.group}-0"
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # Track retry counts by stream entry_id (not event.id)
         self._retry_counts: dict[str, int] = {}
 
     @abstractmethod
@@ -65,9 +74,10 @@ class EventConsumer(ABC):
         log.info("consumer.stopped", group=self.group)
 
     def _consume_loop(self) -> None:
-        """Main loop: read from stream, handle events, ack or DLQ."""
+        """Main loop: read new messages, then claim pending (unacked) for retry."""
         while not self._stop.is_set():
             try:
+                # First: read NEW messages from the stream
                 messages = self._bus.read_group(
                     self.stream,
                     self.group,
@@ -79,42 +89,67 @@ class EventConsumer(ABC):
                     if self._stop.is_set():
                         break
                     self._process_message(entry_id, fields)
+
+                # Then: claim and retry pending messages (previously failed)
+                self._process_pending()
+
             except Exception:
                 if not self._stop.is_set():
                     log.warning("consumer.loop_error", group=self.group, exc_info=True)
 
+    def _process_pending(self) -> None:
+        """Reclaim and retry pending (unacked) messages from previous failures."""
+        try:
+            pending = self._bus.claim_pending(
+                self.stream,
+                self.group,
+                self._consumer_id,
+                min_idle_ms=5000,  # Only retry messages idle for 5+ seconds
+                count=EVENT_CONSUMER_POLL_BATCH,
+            )
+            for entry_id, fields in pending:
+                if self._stop.is_set():
+                    break
+                self._process_message(entry_id, fields)
+        except Exception:
+            pass  # Pending claim failures are non-critical
+
     def _process_message(self, entry_id: str, fields: dict[str, str]) -> None:
-        """Process one message: handle → ack, or retry → DLQ."""
+        """Process one message: handle → ack, or leave unacked for retry → DLQ."""
         event = KoiEvent.from_stream_dict(fields)
         try:
             self.handle(event)
             self._bus.ack(self.stream, self.group, entry_id)
-            # Clear retry count on success
-            self._retry_counts.pop(event.id, None)
+            self._retry_counts.pop(entry_id, None)
             log.debug("consumer.processed", group=self.group, event_id=event.id, subject=event.subject)
         except Exception as exc:
-            retries = self._retry_counts.get(event.id, 0) + 1
-            self._retry_counts[event.id] = retries
+            retries = self._retry_counts.get(entry_id, 0) + 1
+            self._retry_counts[entry_id] = retries
 
             if retries >= EVENT_DLQ_MAX_RETRIES:
+                # Max retries exhausted — move to dead letter queue
                 self._bus.send_to_dlq(self.stream, event, str(exc))
                 self._bus.ack(self.stream, self.group, entry_id)
-                self._retry_counts.pop(event.id, None)
+                self._retry_counts.pop(entry_id, None)
                 log.error(
                     "consumer.dlq",
                     group=self.group,
                     event_id=event.id,
                     retries=retries,
-                    error=str(exc)[:200],
+                    error=str(exc),
                 )
             else:
+                # Do NOT ack — Redis will redeliver via pending entries list
                 log.warning(
-                    "consumer.retry",
+                    "consumer.retry_pending",
                     group=self.group,
                     event_id=event.id,
                     attempt=retries,
-                    error=str(exc)[:200],
+                    error=str(exc),
                 )
-                # Ack to avoid re-delivery of same message, but the retry count
-                # means subsequent events from same source will be tracked
-                self._bus.ack(self.stream, self.group, entry_id)
+
+            # Prune stale retry tracking entries to prevent unbounded growth
+            if len(self._retry_counts) > _MAX_RETRY_TRACKING:
+                oldest_keys = sorted(self._retry_counts.keys())[:_MAX_RETRY_TRACKING // 2]
+                for k in oldest_keys:
+                    self._retry_counts.pop(k, None)
