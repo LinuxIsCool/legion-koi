@@ -1,0 +1,323 @@
+# Thread Classification Report
+# Total Telegram threads: 876
+# Total Telegram messages: 783,814
+
+# === T1: DMs (always ingest) — 584 threads, 44,402 messages ===
+# (No config needed — DMs are auto-included)
+
+# === T2: Active groups (Shawn posted) — 171 threads, 568,176 messages ===
+# (No config needed — auto-included by participation)
+#   telegram:chat:-1001357982180  # Curve Finance (423,590 msgs, 25 posts)
+#   telegram:chat:-1001917240713  # Regenerate Cascadia (18,178 msgs, 2 posts)
+#   telegram:chat:-1001201746023  # Commons Stack (14,875 msgs, 6 posts)
+#   telegram:chat:-1001514345968  # Pond Chat (11,031 msgs, 2 posts)
+#   telegram:chat:-1002302568651  # GAIA AI Portal (8,940 msgs, 65 posts)
+#   telegram:chat:-1001489612668  # LeGrandJeu / Commons Dynamics (7,281 msgs, 2 posts)
+#   telegram:chat:-1001272557120  # Blockchain & AI For Ecology (7,262 msgs, 3 posts)
+#   telegram:chat:-1001333578218  # BlockCertsAI (5,613 msgs, 1 posts)
+#   telegram:chat:-1001968127505  # BCRG (5,306 msgs, 641 posts)
+#   telegram:chat:-1001383369347  # CS dDEV Team (4,288 msgs, 6 posts)
+#   telegram:chat:-1001400393954  # cadCAD_org (4,193 msgs, 1 posts)
+#   telegram:chat:-1001709020605  # Greenpill.network (4,157 msgs, 4 posts)
+#   telegram:chat:-1001382455209  # TE Praise (4,079 msgs, 36 posts)
+#   telegram:chat:-1001510118347  # $REGEN Tokenomics (3,893 msgs, 3 posts)
+#   telegram:chat:-1001774458541  # Defi4good people (3,522 msgs, 3 posts)
+#   telegram:chat:-1001835169659  # Web3 Cities Network | Eth Denver 🇺🇸 | PARTYBUS 2026 🚌🥳 (3,482 msgs, 1 posts)
+#   telegram:chat:-1001859957106  # A General Forum on Ethereum Localism (3,146 msgs, 5 posts)
+#   telegram:chat:-1001554632745  # TEC Community Stewards (2,767 msgs, 5 posts)
+#   telegram:chat:-1001457753760  # Commons Swarm 🌐 (2,435 msgs, 32 posts)
+#   telegram:chat:-1002135908301  # $GROWK (1,912 msgs, 3 posts)
+#   telegram:chat:-459009431  # Defi4good people (1,737 msgs, 1 posts)
+#   telegram:chat:-1001803818775  # AI Space - Giveth Galaxy (fmrly AI April & June Hackathon) (1,508 msgs, 3 posts)
+#   telegram:chat:-1001859733621  # OpenCivics Network 🌱 (1,448 msgs, 1 posts)
+#   telegram:chat:-1002663085408  # Cascadia BioFi Conference (1,431 msgs, 13 posts)
+#   telegram:chat:-1001150391212  # Praise Testing (1,355 msgs, 26 posts)
+#   telegram:chat:-1001697061400  # metacrisis.xyz close collaborators (1,185 msgs, 2 posts)
+#   telegram:chat:-651209178  # TEC Bonding Curves Research (988 msgs, 96 posts)
+#   telegram:chat:-4041585384  # Regen Vic (889 msgs, 238 posts)
+#   telegram:chat:-4864840876  # Regen <> Gaia (827 msgs, 20 posts)
+#   telegram:chat:-497326419  # D2D // Curve Labs // Kolektivo Labs // PrimeDAO (Internal) 🔐 (744 msgs, 1 posts)
+#   telegram:chat:-4268861171  # Coordination Crew (740 msgs, 144 posts)
+#   telegram:chat:-1001833998176  # Us @ ETHCC/Paris 2023 (719 msgs, 74 posts)
+#   telegram:chat:-1001366442752  # Curve Ecosystem Grants Center (703 msgs, 5 posts)
+#   telegram:chat:-4183617445  # Cascadia BioFi Conference (702 msgs, 9 posts)
+#   telegram:chat:-4101225719  # BCRG<>Inverter (689 msgs, 22 posts)
+#   telegram:chat:-1002590518224  # Regen Commons | Community (621 msgs, 9 posts)
+#   telegram:chat:-1001576912997  # ReFi Summit (596 msgs, 3 posts)
+#   telegram:chat:-1001979648867  # Gitcoin <> TEC (582 msgs, 5 posts)
+#   telegram:chat:-1001434636191  # Skill Forest - NFT SupaGroup (570 msgs, 10 posts)
+#   telegram:chat:-1001684979822  # Inverter Main Coordination (560 msgs, 2 posts)
+#   telegram:chat:-4657737659  # MycoCivics (532 msgs, 57 posts)
+#   telegram:chat:-1002207972448  # 📍BXL changemakers - prev. „ETH CC regen houseeeee“ in Brussels / Bruxelles July 2024 (526 msgs, 1 posts)
+#   telegram:chat:-667311598  # Golden Line (508 msgs, 81 posts)
+#   telegram:chat:-4135384952  # ETH Denver 2024 (401 msgs, 41 posts)
+#   telegram:chat:-444247183  # Gitcoin Research Community Hub (368 msgs, 16 posts)
+#   telegram:chat:-653773621  # TEC Stewards Alumni Group (291 msgs, 16 posts)
+#   telegram:chat:-568417958  # FoxFire Guild (282 msgs, 2 posts)
+#   telegram:chat:-4279947919  # Brussels Squanchers Anonymous (253 msgs, 13 posts)
+#   telegram:chat:-4705126156  # Denver housing (237 msgs, 14 posts)
+#   telegram:chat:-1001647317593  # TE Grant Round Advisory Group (227 msgs, 10 posts)
+#   telegram:chat:-4603162762  # entropy—the god of/acc (201 msgs, 6 posts)
+#   telegram:chat:-905733573  # EthCC 23 Accommodation (198 msgs, 29 posts)
+#   telegram:chat:-1001559138947  # Metaweavers (185 msgs, 6 posts)
+#   telegram:chat:-4198660118  # EBF Impact Network Level 2 (181 msgs, 17 posts)
+#   telegram:chat:-4039669342  # TE Report Design (164 msgs, 33 posts)
+#   telegram:chat:-4812483049  # Regen bot testing (163 msgs, 1 posts)
+#   telegram:chat:-790369769  # EPIPHANY • SHAWNI AMARATI • Yggdrasill KAZMIC ETERNAL TREE • Marie Whitney (153 msgs, 60 posts)
+#   telegram:chat:-648528835  # Starlight (152 msgs, 42 posts)
+#   telegram:chat:-540748221  # Longtail Financial - BlockCerts (152 msgs, 19 posts)
+#   telegram:chat:-530811907  # DeFi Bank (143 msgs, 6 posts)
+#   telegram:chat:-4625394803  # Josh, Ygg and Darren (139 msgs, 16 posts)
+#   telegram:chat:-1001717267669  # Web of Trust (128 msgs, 7 posts)
+#   telegram:chat:-4693457882  # BCRG Security (127 msgs, 12 posts)
+#   telegram:chat:-339624484  # Longtail <> Polygon (124 msgs, 11 posts)
+#   telegram:chat:-993066178  # Otherworld Camp (110 msgs, 2 posts)
+#   telegram:chat:-1002138546780  # Inverter Stakeholders (110 msgs, 1 posts)
+#   telegram:chat:-4040014610  # Mycofi Book Community (109 msgs, 5 posts)
+#   telegram:chat:-4603314343  # BCRG <> Avalanche Foundation (101 msgs, 17 posts)
+#   telegram:chat:-4148163315  # BCRG <> Baseline (99 msgs, 22 posts)
+#   telegram:chat:-4607985270  # Puppeteers (98 msgs, 38 posts)
+#   telegram:chat:-491876774  # Yin Yang Sing Along (95 msgs, 42 posts)
+#   telegram:chat:-5220275693  # re/acc commons (94 msgs, 1 posts)
+#   telegram:chat:-434123740  # TEC Params Templating (94 msgs, 31 posts)
+#   telegram:chat:-589942806  # Hub: Long Tail x Obtainable (90 msgs, 19 posts)
+#   telegram:chat:-327201925  # cadCAD Edu - Shawn/Ben/Jonathan (90 msgs, 36 posts)
+#   telegram:chat:-4795234005  # GAIA X MetaMyth (82 msgs, 13 posts)
+#   telegram:chat:-4053905575  # BCRG<>Gyro (82 msgs, 4 posts)
+#   telegram:chat:-980737083  # Serendipity (81 msgs, 7 posts)
+#   telegram:chat:-633107727  # 💙 Hummingbirds ☀️ (80 msgs, 22 posts)
+#   telegram:chat:-4274109352  # LTF | Asym (80 msgs, 5 posts)
+#   telegram:chat:-5104878701  # GraphNerds Working Group (78 msgs, 3 posts)
+#   telegram:chat:-475649950  # TE videos (76 msgs, 5 posts)
+#   telegram:chat:-4569819696  # Portal Land (76 msgs, 18 posts)
+#   telegram:chat:-4705279972  # GAIA X METAMYTH (69 msgs, 4 posts)
+#   telegram:chat:-462193540  # Spirit Foundation TEC proposal (65 msgs, 21 posts)
+#   telegram:chat:-5034459309  # Indigenomics AI Devs (64 msgs, 15 posts)
+#   telegram:chat:-599108926  # Panther <> Nico/Shawn (63 msgs, 2 posts)
+#   telegram:chat:-1003468820500  # Epiphany Node (63 msgs, 8 posts)
+#   telegram:chat:-5183959586  # Regen Commons in Denver (61 msgs, 15 posts)
+#   telegram:chat:-871208221  # FamJam (58 msgs, 23 posts)
+#   telegram:chat:-4149509434  # ABC ARB Dev Group (57 msgs, 17 posts)
+#   telegram:chat:-5122822372  # Research Project (55 msgs, 4 posts)
+#   telegram:chat:-422906913  # Prime Tokenomics (55 msgs, 5 posts)
+#   telegram:chat:-527632959  # TEC / cadCAD Edu (53 msgs, 4 posts)
+#   telegram:chat:-4998415478  # Earth Vibes (52 msgs, 5 posts)
+#   telegram:chat:-4704981291  # Angelique & Eve, Ygg (50 msgs, 10 posts)
+#   telegram:chat:-342077258  # TEC Labs Advisory (46 msgs, 14 posts)
+#   telegram:chat:-4055669034  # rohan, Ygg and Anthony | Founder @ Excelsior Labs (45 msgs, 18 posts)
+#   telegram:chat:-5122995204  # Jessica, Darren and Shawn (43 msgs, 15 posts)
+#   telegram:chat:-4975166207  # MycoFi Global (39 msgs, 13 posts)
+#   telegram:chat:-867084350  # Unity Global Golden Line (37 msgs, 1 posts)
+#   telegram:chat:-4909957121  # Longtail + Flambé (37 msgs, 12 posts)
+#   telegram:chat:-4645584566  # Regen Commons X Space (36 msgs, 4 posts)
+#   telegram:chat:-4198656456  # EBF X Linea (36 msgs, 6 posts)
+#   telegram:chat:-4981073811  # Oral History Project (34 msgs, 1 posts)
+#   telegram:chat:-485088130  # Boson TEA and Token Engineering Community (32 msgs, 6 posts)
+#   telegram:chat:-827182299  # OG Inverters (31 msgs, 19 posts)
+#   telegram:chat:-1002197679519  # Victoria PizzaDAO (31 msgs, 1 posts)
+#   telegram:chat:-4143656450  # Knoxville math conf! (29 msgs, 7 posts)
+#   telegram:chat:-4133816968  # ADVANCING QF - Panel (ETHD People's Choice) (29 msgs, 2 posts)
+#   telegram:chat:-4605006971  # Regens @ Climate Week NYC 2025 🗽🌳🥳 (28 msgs, 1 posts)
+#   telegram:chat:-4796917820  # TEAM GAIA (27 msgs, 2 posts)
+#   telegram:chat:-1001210446265  # 🌱 Public Goods Twitter Collective 🌱 (27 msgs, 2 posts)
+#   telegram:chat:-954690120  # Token Engineering Bonding Curve <> Dune Beta Test (26 msgs, 3 posts)
+#   telegram:chat:-665407548  # 4 Bush Kids (26 msgs, 2 posts)
+#   telegram:chat:-4140853831  # afCVX Braintrust (26 msgs, 3 posts)
+#   telegram:chat:-4881381984  # BioFi Anthropology (Chloe) X GaiaAI (25 msgs, 1 posts)
+#   telegram:chat:-5233774416  # Ygg, Darren and Common (24 msgs, 8 posts)
+#   telegram:chat:-4195685363  # Eden, Bogdan and the Shawn/Sean group (24 msgs, 11 posts)
+#   telegram:chat:-4032457360  # YGG <> Asym (24 msgs, 5 posts)
+#   telegram:chat:-4215686731  # Vancooovy baby (23 msgs, 1 posts)
+#   telegram:chat:-951390105  # Group Call (22 msgs, 6 posts)
+#   telegram:chat:-4807735845  # Benefactory.xyz (21 msgs, 3 posts)
+#   telegram:chat:-4595701830  # West Coast Derplords & Their Associated Trolls (21 msgs, 4 posts)
+#   telegram:chat:-737170197  # Shambala Tix (19 msgs, 5 posts)
+#   telegram:chat:-4901307838  # Blake x Shawn $UAI Token (19 msgs, 5 posts)
+#   telegram:chat:-4676644787  # Colorado Water Community Bridge (19 msgs, 5 posts)
+#   telegram:chat:-4063879829  # Shawn - Rain - H20 (19 msgs, 4 posts)
+#   telegram:chat:-4682298450  # TEC Retro Grant Karma Gap Assist (18 msgs, 1 posts)
+#   telegram:chat:-4510255143  # Portland Trip 2024 (18 msgs, 3 posts)
+#   telegram:chat:-4013031721  # LTF Token Modeling (18 msgs, 2 posts)
+#   telegram:chat:-418077130  # pre-cadCAD & cadCAD Ed Intro (17 msgs, 8 posts)
+#   telegram:chat:-821522861  # CHAD UPPERCUT (15 msgs, 3 posts)
+#   telegram:chat:-460754091  # Token Engineering Meets Renaissance U (15 msgs, 2 posts)
+#   telegram:chat:-4265570526  # Ggp <> BCRG (15 msgs, 2 posts)
+#   telegram:chat:-4071921939  # Kmets <> YGG (15 msgs, 4 posts)
+#   telegram:chat:-694015946  # restoreDAO community chat (14 msgs, 5 posts)
+#   telegram:chat:-1002081323887  # Shawn - Rain - H20 (13 msgs, 3 posts)
+#   telegram:chat:-832339666  # Spirals <> ReFi Bootcamp (12 msgs, 1 posts)
+#   telegram:chat:-4787285508  # Best Devs I Know (12 msgs, 9 posts)
+#   telegram:chat:-4287443832  # Clare, Darren, Anna, Ygg and Benji (12 msgs, 1 posts)
+#   telegram:chat:-4049298280  # Excelsior X LTF (12 msgs, 3 posts)
+#   telegram:chat:-855131930  # ❤️🐍 (10 msgs, 3 posts)
+#   telegram:chat:-4210539707  # Open Civics <> Horizons Law (10 msgs, 1 posts)
+#   telegram:chat:-4187112985  # Greenpill (Chad) (10 msgs, 4 posts)
+#   telegram:chat:-910047348  # Paris dinner tn? (9 msgs, 2 posts)
+#   telegram:chat:-5003421338  # Composting Capitalism (9 msgs, 1 posts)
+#   telegram:chat:-4726718236  # Regen Island (9 msgs, 6 posts)
+#   telegram:chat:-4171245640  # TE Deal Flow (9 msgs, 3 posts)
+#   telegram:chat:-4156912686  # New Economic Model (9 msgs, 2 posts)
+#   telegram:chat:-4143589208  # Unbound Science <> EBF (9 msgs, 2 posts)
+#   telegram:chat:-774949841  # Intro Shawn <> Elliot (8 msgs, 3 posts)
+#   telegram:chat:-4695850274  # Gaia AI X One Local (8 msgs, 1 posts)
+#   telegram:chat:-4027643325  # Rowdy Bunch (8 msgs, 4 posts)
+#   telegram:chat:-4896789455  # GAIA Advisory (6 msgs, 2 posts)
+#   telegram:chat:-4732910376  # Flow Funding Water Unite and Kinship Earth (6 msgs, 1 posts)
+#   telegram:chat:-4635639151  # DarkRegenaissance.xyz (6 msgs, 1 posts)
+#   telegram:chat:-4624472903  # Inverter Slack Onboarding (6 msgs, 1 posts)
+#   telegram:chat:-932197313  # Victoria Friends (5 msgs, 2 posts)
+#   telegram:chat:-4763580134  # West Coast Myco-Civics Connection (5 msgs, 1 posts)
+#   telegram:chat:-952447413  # Fluidefi X Longtail Financial (4 msgs, 1 posts)
+#   telegram:chat:-513249929  # West Coast Bath Coast (4 msgs, 2 posts)
+#   telegram:chat:-4940833475  # Avalanche X BCRG (4 msgs, 2 posts)
+#   telegram:chat:-4920422152  # Shambs 2025 (4 msgs, 1 posts)
+#   telegram:chat:-4127321753  # Ecstatic Commanders (4 msgs, 2 posts)
+#   telegram:chat:-821242610  # Golden Ratio <> Shawn Anderson (3 msgs, 1 posts)
+#   telegram:chat:-4257290389  # Victoria PizzaDAO (3 msgs, 1 posts)
+#   telegram:chat:-786323980  # The Computer (2 msgs, 1 posts)
+#   telegram:chat:-5244509510  # MycoCivics (2 msgs, 2 posts)
+#   telegram:chat:-4175653801  # Expertise Network of Trust (2 msgs, 1 posts)
+#   telegram:chat:-399767391  # scaffold-spirit (2 msgs, 1 posts)
+
+# === T3 CANDIDATES: Lurk groups with domain keyword match — 40 threads, 48,923 messages ===
+# Review: move to message_thread_includes to ingest, or leave out to skip
+message_thread_includes:
+  - "telegram:chat:-1001185488974"  # Regen Network - Public Group (21,229 msgs) [keywords: regen]
+  - "telegram:chat:-1001364014301"  # Circular Trade Analytics (7,793 msgs) [keywords: circular]
+  - "telegram:chat:-1001550952954"  # ReFi DAO (6,980 msgs) [keywords: refi, dao]
+  - "telegram:chat:-1002315128857"  # DeepFunding.Org (4,026 msgs) [keywords: funding]
+  - "telegram:chat:-1003756725881"  # Regen KOI Alerts (2,498 msgs) [keywords: regen, koi]
+  - "telegram:chat:-1001902068671"  # Funding the Commons (1,274 msgs) [keywords: commons, funding]
+  - "telegram:chat:-1002037254518"  # RegenLearnings.xyz (995 msgs) [keywords: regen]
+  - "telegram:chat:-1002021150265"  # CCG24 - Crypto Commons Gathering 2024 community org! (840 msgs) [keywords: commons]
+  - "telegram:chat:-438444738"  # TEC Community Stewards (812 msgs) [keywords: tec]
+  - "telegram:chat:-4730314235"  # Regen Commons - Governance Activation (666 msgs) [keywords: regen, commons, governance]
+  - "telegram:chat:-1002018023845"  # Mycofi Book Community (454 msgs) [keywords: mycofi]
+  - "telegram:chat:-691812967"  # DeFi Wallet Mining Discussion Group181 (247 msgs) [keywords: defi]
+  - "telegram:chat:-1002926024684"  # Regens @ Climate Week NYC 2025 🗽🌳🥳 (137 msgs) [keywords: regen, climate]
+  - "telegram:chat:-4548303915"  # Regen speakers (131 msgs) [keywords: regen]
+  - "telegram:chat:-1003777764777"  # bioregional builders working group (130 msgs) [keywords: bioregion]
+  - "telegram:chat:-438060533"  # CarbonBase/Ark <> Commons Stack/Trusted Seed (116 msgs) [keywords: commons, carbon, seed]
+  - "telegram:chat:-1002712699953"  # TEC Sunset Discussion (89 msgs) [keywords: tec]
+  - "telegram:chat:-4026967214"  # TEC & Inverter (58 msgs) [keywords: tec, inverter]
+  - "telegram:chat:-1002388247428"  # ReFAI DAO (53 msgs) [keywords: dao]
+  - "telegram:chat:-4171122088"  # BCRG <> Giza (47 msgs) [keywords: bcrg]
+  - "telegram:chat:-1002589744404"  # Gaia x Newcoin 🌱 (42 msgs) [keywords: gaia]
+  - "telegram:chat:-4130346429"  # Cow X BCRG (38 msgs) [keywords: bcrg]
+  - "telegram:chat:-4104463969"  # Lido X BCRG (37 msgs) [keywords: bcrg]
+  - "telegram:chat:-1001944648475"  # Decentralized Trust Building (35 msgs) [keywords: decentralized]
+  - "telegram:chat:-4730110471"  # TEC Retro Round Badgeholders '25 (34 msgs) [keywords: tec]
+  - "telegram:chat:-4608625157"  # Regenopoly (23 msgs) [keywords: regen]
+  - "telegram:chat:-1002406568913"  # Regen Link (23 msgs) [keywords: regen]
+  - "telegram:chat:-583716444"  # BC Impact x LTF (22 msgs) [keywords: impact]
+  - "telegram:chat:-4645238558"  # Gaia x Newcoin 🌱 (21 msgs) [keywords: gaia]
+  - "telegram:chat:-4758454135"  # ETH Denver 2024 Regenerates (14 msgs) [keywords: regen]
+  - "telegram:chat:-1002300658477"  # Cascadia BioFi Conference (11 msgs) [keywords: biofi]
+  - "telegram:chat:-1003192131410"  # DarkRegenaissance.xyz (9 msgs) [keywords: regen]
+  - "telegram:chat:-5076868398"  # Regen Recap: COP 30 Breakthroughs (8 msgs) [keywords: regen]
+  - "telegram:chat:-4876029175"  # RegenAIssance X Space 9/12 (7 msgs) [keywords: regen]
+  - "telegram:chat:-407121254"  # cadCAD Edu - Shawn/Ben/Jonathan (7 msgs) [keywords: cadcad]
+  - "telegram:chat:-5169987226"  # Regen EthDenver 2026 (6 msgs) [keywords: regen]
+  - "telegram:chat:-4840105638"  # TEC Sunset Discussion (6 msgs) [keywords: tec]
+  - "telegram:chat:-4234708512"  # Josh <> BCRG (Study sessions on Token Regulations & Compliance) (4 msgs) [keywords: token, bcrg]
+  - "telegram:chat:-1003545541261"  # Regen bot testing (1 msgs) [keywords: regen]
+  - "telegram:chat:-1001780639283"  # LULLY PAPI HOME NOW MEOW DAO SHOW (0 msgs) [keywords: dao]
+
+# === T4 CANDIDATES: Lurk groups, no keyword match — 81 threads, 122,313 messages ===
+# These will be SKIPPED unless moved to message_thread_includes above
+#   "telegram:chat:-1001823464913"  # EigenLayer (22,528 msgs)
+#   "telegram:chat:-1001715064670"  # Cosmos BD (16,055 msgs)
+#   "telegram:chat:-1001719960581"  # Curve Finance (15,389 msgs)
+#   "telegram:chat:-1001858800757"  # Blockravers (9,330 msgs)
+#   "telegram:chat:-1001807434859"  # EquilibriaCC Community Official Channel (9,202 msgs)
+#   "telegram:chat:-1001590150062"  # Solana Canada (6,080 msgs)
+#   "telegram:chat:-1002094187442"  # MAIN CHARACTERS (5,884 msgs)
+#   "telegram:chat:-1001734873031"  # ZKML community (4,996 msgs)
+#   "telegram:chat:-1001883939594"  # The MetaMask Developer Chat (3,734 msgs)
+#   "telegram:chat:-1001585364742"  # CardStarter Official Communiity (3,474 msgs)
+#   "telegram:chat:-1002114659718"  # Linea Builders Club (3,302 msgs)
+#   "telegram:chat:-1001759165502"  # MetaFest Croatia (3,250 msgs)
+#   "telegram:chat:-1001630975097"  # K1 (2,408 msgs)
+#   "telegram:chat:-1001645849954"  # Optimism Skunk Works (1,911 msgs)
+#   "telegram:chat:-1001516782554"  # Prospiracy - Main (1,894 msgs)
+#   "telegram:chat:-1002454065974"  # [test] Onchain Agents (1,456 msgs)
+#   "telegram:chat:-1001954907488"  # Planetary Council (1,355 msgs)
+#   "telegram:chat:-1002097353591"  # First Dog on The Internet (1,319 msgs)
+#   "telegram:chat:-1002254884585"  # Safe Agentaton 2025 - Hackers (1,295 msgs)
+#   "telegram:chat:-1002454913914"  # Carrot🥕Castle 🏰 (1,069 msgs)
+#   "telegram:chat:-1002453822530"  # Avalanche Grantees 🔺 (866 msgs)
+#   "telegram:chat:-1001775734874"  # Trust in the Woods <> Blockravers (846 msgs)
+#   "telegram:chat:-1002523607641"  # Ethereum Localism (655 msgs)
+#   "telegram:chat:-1002330258855"  # Flow State Community (528 msgs)
+#   "telegram:chat:-1001806991767"  # YGG (490 msgs)
+#   "telegram:chat:-1002326234375"  # ElizaOS x NYC 🗽 (442 msgs)
+#   "telegram:chat:-1001369284717"  # Matic Network Official Community (434 msgs)
+#   "telegram:chat:-4127505436"  # MAIN CHARACTERS (332 msgs)
+#   "telegram:chat:-1001545972671"  # Stakepluto-i General (294 msgs)
+#   "telegram:chat:-4221971793"  # Cartel le Brussels (169 msgs)
+#   "telegram:chat:-1001751723059"  # Polygon Official Community (147 msgs)
+#   "telegram:chat:-722680640"  # Rewards Systems - NEAR data (134 msgs)
+#   "telegram:chat:-1001978674622"  # Ninit Network (127 msgs)
+#   "telegram:chat:-797816878"  # Adventure Time (101 msgs)
+#   "telegram:chat:-1002033700096"  # TE Grant Round Spring 2024 Grantees (100 msgs)
+#   "telegram:chat:-651125300"  # PI Strategy Team (83 msgs)
+#   "telegram:chat:-1002106715604"  # Curve Finance (70 msgs)
+#   "telegram:chat:-1002109439312"  # GreenPill Denver (69 msgs)
+#   "telegram:chat:-4706052373"  # GFEL @ Life House (66 msgs)
+#   "telegram:chat:-1001922680177"  # Thallo News (40 msgs)
+#   "telegram:chat:-999510992"  # $Earth (37 msgs)
+#   "telegram:chat:-688567167"  # Nval.com (31 msgs)
+#   "telegram:chat:-4515633802"  # MayDayProject.xyz (30 msgs)
+#   "telegram:chat:-4779846920"  # Boulder House (29 msgs)
+#   "telegram:chat:-1002428724174"  # Exeunt & Jeff Emmett,, Scott (23 msgs)
+#   "telegram:chat:-1002086627906"  # Kmets <> YGG (22 msgs)
+#   "telegram:chat:-5125661243"  # Dream Tank Builders🌀✨ (17 msgs)
+#   "telegram:chat:-4778408774"  # Regional Artificial Intelligence Initiative (17 msgs)
+#   "telegram:chat:-441548148"  # LongTail BCBC Operations Set-up (14 msgs)
+#   "telegram:chat:-1001380094768"  # Curve Finance (13 msgs)
+#   "telegram:chat:-1001963534483"  # Curve Finance (12 msgs)
+#   "telegram:chat:-901992309"  # Louvre “Trip” 7/23 (11 msgs)
+#   "telegram:chat:-4928758780"  # GSA knowledge base (11 msgs)
+#   "telegram:chat:-5192885338"  # Herring 🐟 Data (10 msgs)
+#   "telegram:chat:-4278836200"  # Myco-Mortgages (10 msgs)
+#   "telegram:chat:-466485198"  # Covalent/Spirit (9 msgs)
+#   "telegram:chat:-4113383754"  # Linea Builders Club (9 msgs)
+#   "telegram:chat:-1001248702337"  # Boson Protocol (9 msgs)
+#   "telegram:chat:-5272195399"  # CO 26 (7 msgs)
+#   "telegram:chat:-4722532679"  # BRICS play (7 msgs)
+#   "telegram:chat:-1002070393814"  # GPN Summit 24’ Crew (7 msgs)
+#   "telegram:chat:-1001614465697"  # Polygon Official Announcements (7 msgs)
+#   "telegram:chat:-4896443788"  # Halloween Party (6 msgs)
+#   "telegram:chat:-4112606302"  # Monty, Scott, Darren, & Shawn (6 msgs)
+#   "telegram:chat:-1001602250979"  # Curve Finance (6 msgs)
+#   "telegram:chat:-5153437261"  # BOTS4LYFE (5 msgs)
+#   "telegram:chat:-933226087"  # Shambala 2023 (4 msgs)
+#   "telegram:chat:-671661708"  # Canadian Securities Research Institute (4 msgs)
+#   "telegram:chat:-1001652824641"  # Matic_up (4 msgs)
+#   "telegram:chat:-4622274992"  # Another World Federated Ai (3 msgs)
+#   "telegram:chat:-776277729"  # first sensitive investor (2 msgs)
+#   "telegram:chat:-5239269498"  # Miranda Lif, Shawn, Benjamin and Darren (2 msgs)
+#   "telegram:chat:-5017753334"  # Miranda Líf, Shawn and Darren (2 msgs)
+#   "telegram:chat:-4789490268"  # Josh, Ygg and Darren (2 msgs)
+#   "telegram:chat:-4985224182"  # Inspiring NY conversations (TBD new name) (1 msgs)
+#   "telegram:chat:-669247538"  # Group Call (0 msgs)
+#   "telegram:chat:-5086818419"  # Epiphany Node (0 msgs)
+#   "telegram:chat:-4161312847"  # Eth Denver Holo Hack (0 msgs)
+#   "telegram:chat:-4064775365"  # TEGR3 Advisory Group (0 msgs)
+#   "telegram:chat:-1003607299618"  # Jessica VIP Channel 📊💰 (0 msgs)
+#   "telegram:chat:-1002106115589"  # Network of Trust (0 msgs)
+
+# === SUGGESTED EXCLUDES: High-volume groups with minimal participation ===
+message_thread_excludes:
+  - "telegram:chat:-1001357982180"  # Curve Finance (423,590 msgs, only 25 posts)
+  - "telegram:chat:-1001917240713"  # Regenerate Cascadia (18,178 msgs, only 2 posts)
+  - "telegram:chat:-1001201746023"  # Commons Stack (14,875 msgs, only 6 posts)
+  - "telegram:chat:-1001514345968"  # Pond Chat (11,031 msgs, only 2 posts)
+
+# === SUMMARY ===
+# T1 (DMs):               584 threads,     44,402 messages
+# T2 (Active groups):     171 threads,    568,176 messages
+# T3 (Lurk + keywords):    40 threads,     48,923 messages
+# T4 (Lurk, skip):         81 threads,    122,313 messages
+#
+# After filtering (T1+T2+T3, minus excludes): estimate depends on your review
