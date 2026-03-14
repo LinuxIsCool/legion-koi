@@ -9,7 +9,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage
+from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan
 
 
 class SensorConfig(BaseModel):
@@ -26,6 +26,13 @@ class SensorConfig(BaseModel):
     message_db_path: str = "~/.claude/local/messages/messages.db"
     message_state_path: str = "./state/message_state.json"
     message_poll_interval: float = 60.0
+    # Message filtering — thread-level relevance gating
+    message_self_sender_ids: list[str] = ["telegram:user:1441369482"]
+    message_thread_includes: list[str] = []   # Lurk group thread_ids to include (T3)
+    message_thread_excludes: list[str] = []   # Thread_ids to always exclude
+    message_enable_filtering: bool = True      # Master switch
+    plan_watch_dir: str = "~/.claude/plans/"
+    plan_state_path: str = "./state/plan_state.json"
 
 
 class PostgresConfig(BaseModel):
@@ -42,8 +49,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage],
-                state=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage],
+                event=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan],
+                state=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),

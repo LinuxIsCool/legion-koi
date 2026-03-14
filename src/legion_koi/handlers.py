@@ -9,7 +9,7 @@ from koi_net.components.interfaces import KnowledgeHandler, HandlerType
 from koi_net.protocol.knowledge_object import KnowledgeObject
 from koi_net.protocol.event import EventType
 
-from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionMessage
+from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionMessage, LegionPlan
 from .storage.postgres import _extract_search_text
 
 slog = structlog.stdlib.get_logger()
@@ -71,6 +71,26 @@ class MessageBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        kobj.normalized_event_type = kobj.event_type or EventType.NEW
+        return kobj
+
+
+@dataclass
+class PlanBundleHandler(KnowledgeHandler):
+    """Validates plan bundle contents have a title."""
+
+    handler_type = HandlerType.Bundle
+    rid_types = (LegionPlan,)
+    event_types = (EventType.NEW, EventType.UPDATE)
+
+    def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        title = kobj.contents.get("title")
+        if not title:
+            slog.warning(
+                "plan.validation_warning",
+                rid=str(kobj.rid),
+                missing_fields=["title"],
+            )
         kobj.normalized_event_type = kobj.event_type or EventType.NEW
         return kobj
 

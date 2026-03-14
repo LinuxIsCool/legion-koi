@@ -5,6 +5,7 @@ from .venture import LegionVenture
 from .recording import LegionRecording
 from .session import LegionSession
 from .message import LegionMessage
+from .plan import LegionPlan
 
 __all__ = [
     "LegionJournal",
@@ -12,4 +13,5 @@ __all__ = [
     "LegionRecording",
     "LegionSession",
     "LegionMessage",
+    "LegionPlan",
 ]

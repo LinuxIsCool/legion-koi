@@ -162,6 +162,12 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         text = contents.get("content", "") or ""
         return text[:MAX_SEARCH_TEXT]
 
+    if namespace == "legion.claude-plan":
+        title = contents.get("title", "")
+        goal = contents.get("goal", "")
+        body = contents.get("body", "")
+        return f"{title} {goal} {body}"
+
     if namespace == "legion.claude-web.conversation":
         parts = []
         name = contents.get("name") or ""

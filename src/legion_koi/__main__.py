@@ -12,6 +12,8 @@ from .sensors.venture_sensor import VentureSensor
 from .sensors.logging_sensor import LoggingSensor
 from .sensors.recording_sensor import RecordingSensor
 from .sensors.message_sensor import MessageSensor
+from .sensors.message_filter import MessageFilter
+from .sensors.plan_sensor import PlanSensor
 from .storage.postgres import PostgresStorage
 from .events.bus import EventBus
 from .events.pg_listener import PgListener
@@ -104,6 +106,11 @@ def main():
         state_path=Path(cfg.venture_state_path),
         kobj_push=node.kobj_queue.push,
     )
+    plan_sensor = PlanSensor(
+        watch_dir=Path(cfg.plan_watch_dir).expanduser(),
+        state_path=Path(cfg.plan_state_path),
+        kobj_push=node.kobj_queue.push,
+    )
 
     # Database sensors
     logging_sensor = LoggingSensor(
@@ -118,7 +125,15 @@ def main():
         kobj_push=node.kobj_queue.push,
         poll_interval=cfg.recording_poll_interval,
     )
+    message_filter = MessageFilter(
+        messages_db_path=Path(cfg.message_db_path).expanduser(),
+        self_sender_ids=cfg.message_self_sender_ids,
+        thread_includes=cfg.message_thread_includes,
+        thread_excludes=cfg.message_thread_excludes,
+        enable=cfg.message_enable_filtering,
+    )
     message_sensor = MessageSensor(
+        message_filter=message_filter,
         db_path=Path(cfg.message_db_path).expanduser(),
         state_path=Path(cfg.message_state_path),
         kobj_push=node.kobj_queue.push,
@@ -156,7 +171,7 @@ def main():
             event_bus = None
 
     # Initial scans
-    all_sensors = [journal_sensor, venture_sensor, logging_sensor, recording_sensor, message_sensor]
+    all_sensors = [journal_sensor, venture_sensor, plan_sensor, logging_sensor, recording_sensor, message_sensor]
     for sensor in all_sensors:
         bundles = sensor.scan_all()
         for bundle in bundles:

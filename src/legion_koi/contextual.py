@@ -82,6 +82,13 @@ def extract_preamble(namespace: str, contents: dict) -> str:
             return ". ".join(parts) + "."
         return ""
 
+    if namespace == "legion.claude-plan":
+        title = contents.get("title") or ""
+        plan_type = contents.get("plan_type") or "auto"
+        if title:
+            return f"Plan: {title}. Type: {plan_type}."
+        return ""
+
     if namespace == "legion.claude-logging":
         cwd = contents.get("cwd") or ""
         if cwd:
