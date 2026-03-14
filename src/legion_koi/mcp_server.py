@@ -20,6 +20,16 @@ app = Server("legion-koi")
 
 _storage: PostgresStorage | None = None
 _config_embedders: dict[str, object] = {}
+_hippo_circuit = None  # Lazy-initialized circuit breaker for FalkorDB
+
+
+def _get_hippo_circuit():
+    """Lazy-initialize the FalkorDB circuit breaker."""
+    global _hippo_circuit
+    if _hippo_circuit is None:
+        from .resilience.circuit_breaker import CircuitBreaker
+        _hippo_circuit = CircuitBreaker(name="hippo-falkordb")
+    return _hippo_circuit
 
 
 def _resolve_config(storage: PostgresStorage, config_id: str | None) -> str:
@@ -528,17 +538,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     elif name == "entity_search":
         try:
             from .hippo_bridge import HippoBridge
+            from .resilience.circuit_breaker import CircuitOpenError
 
             query_text = arguments["query"]
             limit = arguments.get("limit", 20)
 
-            # 1. Hippo entity graph -> RIDs via PPR
-            bridge = HippoBridge(
-                redis_host=HIPPO_REDIS_HOST,
-                redis_port=HIPPO_REDIS_PORT,
-                graph_name=HIPPO_GRAPH_NAME,
-            )
-            entity_rids = bridge.entity_search(query_text, top_k=limit * 2)
+            # 1. Hippo entity graph -> RIDs via PPR (circuit-protected)
+            circuit = _get_hippo_circuit()
+            entity_rids = []
+            bridge = None
+            try:
+                bridge = HippoBridge(
+                    redis_host=HIPPO_REDIS_HOST,
+                    redis_port=HIPPO_REDIS_PORT,
+                    graph_name=HIPPO_GRAPH_NAME,
+                )
+                entity_rids = circuit.call(bridge.entity_search, query_text, top_k=limit * 2)
+            except CircuitOpenError:
+                pass  # Fall back to hybrid-only (no entity boost)
+            except Exception:
+                pass  # FalkorDB unavailable — degrade gracefully
 
             # 2. KOI hybrid search -> results
             config_id = _resolve_config(storage, arguments.get("config"))
@@ -576,8 +595,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     r["rrf_score"] = scores[rid]
                     results.append(r)
 
-            # Enrich with entity triples
-            results = bridge.enrich_results(results)
+            # Enrich with entity triples (skip if bridge unavailable)
+            if bridge is not None:
+                try:
+                    results = circuit.call(bridge.enrich_results, results)
+                except (CircuitOpenError, Exception):
+                    pass  # Results still usable without enrichment
 
             # Format with entity annotations
             header = f"[config: {config_id}] [entity graph: {len(entity_rids)} RIDs from hippo]\n\n"
@@ -688,17 +711,19 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     f"  - {c['name']} ({c['entity_type']}) — {c['shared_bundles']} shared"
                 )
 
-            # Try hippo bridge for additional graph data
+            # Try hippo bridge for additional graph data (circuit-protected)
             try:
                 from .hippo_bridge import HippoBridge
-                bridge = HippoBridge(
+                from .resilience.circuit_breaker import CircuitOpenError
+                hippo_cb = _get_hippo_circuit()
+                hippo_bridge = HippoBridge(
                     redis_host=HIPPO_REDIS_HOST,
                     redis_port=HIPPO_REDIS_PORT,
                     graph_name=HIPPO_GRAPH_NAME,
                 )
                 # Use enrich_results to get triples for the entity's bundles
                 enrichable = [{"rid": b["rid"]} for b in bundles[:5]]
-                enriched = bridge.enrich_results(enrichable)
+                enriched = hippo_cb.call(hippo_bridge.enrich_results, enrichable)
                 all_triples = []
                 for r in enriched:
                     all_triples.extend(r.get("entities", []))

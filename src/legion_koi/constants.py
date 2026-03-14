@@ -116,3 +116,21 @@ HEALTH_SERVICES = [
     "legion-koi.service",
     "legion-messages.service",
 ]
+
+# --- Message filtering ---
+# Seconds before refreshing thread classification cache from messages.db
+MESSAGE_THREAD_CACHE_TTL = 3600
+# Participation ratio below this → LOW_SIGNAL instead of ACTIVE
+# 0.002 = 1 post per 500 messages. Groups like Curve Finance (25/423K = 0.00006)
+# and Commons Stack (6/14K = 0.0004) fall below. BCRG (641/5306 = 0.12) stays ACTIVE.
+LOW_SIGNAL_PARTICIPATION_FLOOR = 0.002
+# Consumer-level content quality gate — skip embedding/extraction for trivially short messages
+# ("gm", "yes", emoji) that add no knowledge even in included threads
+EMBED_MIN_CONTENT_CHARS = 20
+EXTRACT_MIN_CONTENT_CHARS = 30
+
+# --- Resilience / Circuit Breaker (Phase 3) ---
+# Number of consecutive failures before opening the circuit
+CIRCUIT_FAILURE_THRESHOLD = 3
+# Seconds to wait before testing recovery (OPEN → HALF_OPEN)
+CIRCUIT_RECOVERY_TIMEOUT_SECONDS = 30

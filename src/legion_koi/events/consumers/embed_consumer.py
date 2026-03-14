@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import structlog
 
+from ...constants import EMBED_MIN_CONTENT_CHARS
 from ...storage.postgres import _extract_search_text, PostgresStorage
+from ...resilience.circuit_breaker import CircuitBreaker, CircuitOpenError
 from ..schemas import KoiEvent, BUNDLE_CREATED, EMBEDDING_COMPUTED
 from ..consumer import EventConsumer
 from ..bus import EventBus
@@ -21,6 +23,7 @@ class EmbedConsumer(EventConsumer):
 
     Subscribes to bundle.created events.
     On success, publishes embedding.computed event.
+    Wraps embedding API calls in a circuit breaker per provider.
     """
 
     event_type = BUNDLE_CREATED
@@ -29,6 +32,7 @@ class EmbedConsumer(EventConsumer):
     def __init__(self, bus: EventBus, storage: PostgresStorage, consumer_id: str | None = None):
         super().__init__(bus, consumer_id)
         self._storage = storage
+        self._circuits: dict[str, CircuitBreaker] = {}
 
     def handle(self, event: KoiEvent) -> None:
         rid = event.data["rid"]
@@ -44,6 +48,10 @@ class EmbedConsumer(EventConsumer):
         if not search_text or not search_text.strip():
             return
 
+        # Quality gate: skip embedding for trivially short messages
+        if namespace == "legion.claude-message" and len(search_text) < EMBED_MIN_CONTENT_CHARS:
+            return
+
         from ...chunking import chunk_text
         from ...contextual import extract_preamble, prepend_preamble
         from ...embeddings import create_embedder
@@ -57,15 +65,23 @@ class EmbedConsumer(EventConsumer):
         total_chunks = 0
 
         for cfg in configs:
+            provider = cfg["provider"]
+            # Per-provider circuit breaker — if TELUS API is down, skip all TELUS configs
+            if provider not in self._circuits:
+                self._circuits[provider] = CircuitBreaker(
+                    name=f"embed-{provider}", event_bus=self._bus
+                )
+            circuit = self._circuits[provider]
+
             try:
                 cfg_embedder = create_embedder(
-                    provider=cfg["provider"], model=cfg["model"]
+                    provider=provider, model=cfg["model"]
                 )
                 is_contextual = cfg["config_id"].endswith("-ctx")
                 self._storage.delete_config_embeddings(cfg["config_id"], rid)
                 for i, chunk in enumerate(chunks):
                     embed_input = prepend_preamble(preamble, chunk) if is_contextual else chunk
-                    vec = cfg_embedder.embed(embed_input, input_type="passage")
+                    vec = circuit.call(cfg_embedder.embed, embed_input, input_type="passage")
                     self._storage.upsert_config_embedding(
                         config_id=cfg["config_id"],
                         rid=rid,
@@ -74,6 +90,8 @@ class EmbedConsumer(EventConsumer):
                         chunk_text=chunk,
                     )
                     total_chunks += 1
+            except CircuitOpenError:
+                log.debug("embed_consumer.circuit_open", rid=rid, config=cfg["config_id"], provider=provider)
             except Exception:
                 log.debug("embed_consumer.config_skip", rid=rid, config=cfg["config_id"], exc_info=True)
 

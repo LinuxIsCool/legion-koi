@@ -1,4 +1,10 @@
-"""Message sensor — polls messages DB for chat messages."""
+"""Message sensor — polls messages DB for chat messages.
+
+Supports optional thread-level filtering via MessageFilter to prevent
+low-signal messages from becoming KOI bundles.
+"""
+
+from __future__ import annotations
 
 import json
 
@@ -15,8 +21,9 @@ BATCH_SIZE = 1000
 
 
 class MessageSensor(DatabaseSensor):
-    def __init__(self, **kwargs):
+    def __init__(self, message_filter=None, **kwargs):
         super().__init__(batch_size=BATCH_SIZE, **kwargs)
+        self._filter = message_filter
 
     def poll(self) -> list[Bundle]:
         if not self.db_path.exists():
@@ -24,6 +31,7 @@ class MessageSensor(DatabaseSensor):
 
         last_rowid = int(self.state.get("last_seen_rowid", 0))
         bundles = []
+        filtered_count = 0
 
         conn = self._connect()
         try:
@@ -35,6 +43,16 @@ class MessageSensor(DatabaseSensor):
                 rowid = row["rowid"]
                 message_id = row["id"]
 
+                # Always advance rowid (even for filtered messages)
+                self.state["last_seen_rowid"] = str(rowid)
+
+                # Thread-level filter — skip before bundle creation
+                if self._filter and not self._filter.should_ingest(
+                    row["thread_id"], row["platform"]
+                ):
+                    filtered_count += 1
+                    continue
+
                 contents = {
                     "message_id": message_id,
                     "platform": row["platform"],
@@ -45,12 +63,17 @@ class MessageSensor(DatabaseSensor):
                     "platform_ts": row["platform_ts"],
                 }
 
+                # Store tier metadata for observability
+                if self._filter:
+                    contents["_koi_tier"] = self._filter.classify(
+                        row["thread_id"], row["platform"]
+                    ).value
+
                 content_hash = sensor_state.compute_hash(
                     json.dumps(contents, sort_keys=True, default=str)
                 )
                 change = sensor_state.has_changed(message_id, content_hash, self.state)
                 if change is None:
-                    self.state["last_seen_rowid"] = str(rowid)
                     continue
 
                 rid = LegionMessage(message_id=message_id)
@@ -58,12 +81,14 @@ class MessageSensor(DatabaseSensor):
                 bundles.append(bundle)
 
                 self.state[message_id] = content_hash
-                self.state["last_seen_rowid"] = str(rowid)
 
         finally:
             conn.close()
 
-        if bundles:
+        if bundles or filtered_count:
             sensor_state.save(self.state_path, self.state)
+
+        if filtered_count:
+            log.debug("poll.filtered", sensor="MessageSensor", filtered=filtered_count)
 
         return bundles
