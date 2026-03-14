@@ -64,7 +64,10 @@ class BaseSensor(ABC):
                 bundle = self.process_file(path)
                 if bundle is not None:
                     self.kobj_push(bundle=bundle)
-                    self.state[bundle.rid.reference] = bundle.manifest.sha256_hash
+                    # Store content hash (same hash used by process_file for dedup checks)
+                    self.state[bundle.rid.reference] = sensor_state.compute_hash(
+                        path.read_text(encoding="utf-8")
+                    )
                     sensor_state.save(self.state_path, self.state)
                     log.info("sensor.processed", rid=str(bundle.rid), sensor=self.__class__.__name__)
             except Exception:
@@ -83,7 +86,9 @@ class BaseSensor(ABC):
                     bundle = self.process_file(path)
                     if bundle is not None:
                         bundles.append(bundle)
-                        self.state[bundle.rid.reference] = bundle.manifest.sha256_hash
+                        self.state[bundle.rid.reference] = sensor_state.compute_hash(
+                            path.read_text(encoding="utf-8")
+                        )
                 except Exception:
                     log.exception("sensor.scan_error", path=str(path))
 

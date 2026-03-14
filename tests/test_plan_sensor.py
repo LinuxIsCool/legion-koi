@@ -49,6 +49,17 @@ class TestClassifyPlan:
         assert plan_type == "subagent"
         assert parent == "precious-exploring-catmull"
 
+    def test_dated_takes_precedence_in_absence_of_subagent_suffix(self):
+        # Dated pattern never collides with subagent — subagent needs -agent-a[hex]{8+}
+        plan_type, parent = classify_plan("2026-03-09-some-plan")
+        assert plan_type == "dated"
+        assert parent == ""
+
+    def test_short_hex_not_treated_as_subagent(self):
+        # Only 3 hex chars — below the 8-char minimum, should be "auto" not "subagent"
+        plan_type, _ = classify_plan("build-agent-abc")
+        assert plan_type == "auto"
+
 
 class TestExtractH1:
     def test_simple(self):
@@ -122,6 +133,30 @@ class TestPlanSensor:
 
         assert bundle.contents["plan_type"] == "subagent"
         assert bundle.contents["parent_slug"] == "snazzy-tumbling-reddy"
+
+    def test_dedup_cross_restart(self, tmp_path):
+        """State persists across sensor instances — same file is not re-ingested."""
+        plan_file = tmp_path / "test-plan.md"
+        plan_file.write_text("# Plan\n\nContent")
+        state_path = tmp_path / "state.json"
+
+        # First sensor instance — processes the file
+        sensor1 = PlanSensor(
+            watch_dir=tmp_path,
+            state_path=state_path,
+            kobj_push=MagicMock(),
+        )
+        first_scan = sensor1.scan_all()
+        assert len(first_scan) == 1
+
+        # Second sensor instance (simulates restart) — file unchanged
+        sensor2 = PlanSensor(
+            watch_dir=tmp_path,
+            state_path=state_path,
+            kobj_push=MagicMock(),
+        )
+        second_scan = sensor2.scan_all()
+        assert len(second_scan) == 0
 
 
 from legion_koi.storage.postgres import _extract_search_text
