@@ -5,7 +5,7 @@ legion.claude-message bundle in PostgreSQL, and deletes those that
 would be filtered out. Cascades to embeddings and bundle_entities.
 
 Usage:
-    cd ~/legion-koi && uv run python scripts/purge_filtered_messages.py [--dry-run]
+    cd ~/legion-koi && uv run python scripts/purge_filtered_messages.py [--dry-run] [--yes]
 """
 
 import sys
@@ -27,6 +27,7 @@ def load_config() -> dict:
 
 def main():
     dry_run = "--dry-run" in sys.argv
+    auto_confirm = "--yes" in sys.argv
 
     config = load_config()
     sensors = config.get("sensors", {})
@@ -85,11 +86,12 @@ def main():
         return
 
     # Confirm
-    answer = input(f"\nDelete {len(to_delete):,} bundles? This cascades to embeddings and entities. [y/N] ")
-    if answer.lower() != "y":
-        print("Aborted.")
-        conn.close()
-        return
+    if not auto_confirm:
+        answer = input(f"\nDelete {len(to_delete):,} bundles? This cascades to embeddings and entities. [y/N] ")
+        if answer.lower() != "y":
+            print("Aborted.")
+            conn.close()
+            return
 
     # Delete in batches to avoid huge transactions
     BATCH_SIZE = 5000
@@ -121,15 +123,16 @@ def main():
     print(f"\nMessage bundles after: {after_count:,}")
     print(f"Purged: {before_count - after_count:,}")
 
-    # Vacuum
-    print("Running VACUUM ANALYZE...")
-    conn.autocommit = True
-    conn.execute("VACUUM ANALYZE bundles")
-    conn.execute("VACUUM ANALYZE embeddings")
-    conn.execute("VACUUM ANALYZE bundle_entities")
-    print("Done.")
-
     conn.close()
+
+    # Vacuum — requires autocommit, so use a fresh connection
+    print("Running VACUUM ANALYZE...")
+    vacuum_conn = psycopg.connect(dsn, autocommit=True)
+    vacuum_conn.execute("VACUUM ANALYZE bundles")
+    vacuum_conn.execute("VACUUM ANALYZE embeddings")
+    vacuum_conn.execute("VACUUM ANALYZE bundle_entities")
+    vacuum_conn.close()
+    print("Done.")
 
 
 if __name__ == "__main__":
