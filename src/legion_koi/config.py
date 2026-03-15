@@ -9,7 +9,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan
+from .rid_types import LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
 
 
 class SensorConfig(BaseModel):
@@ -33,6 +33,13 @@ class SensorConfig(BaseModel):
     message_enable_filtering: bool = True      # Master switch
     plan_watch_dir: str = "~/.claude/plans/"
     plan_state_path: str = "./state/plan_state.json"
+    research_watch_dir: str = "~/legion-brain/local/research/"
+    research_state_path: str = "./state/research_state.json"
+    contact_db_path: str = "~/.claude/local/messages/messages.db"
+    contact_state_path: str = "./state/contact_state.json"
+    contact_poll_interval: float = 300.0
+    backlog_watch_dir: str = "~/.claude/local/backlog/"
+    backlog_state_path: str = "./state/backlog_state.json"
 
 
 class PostgresConfig(BaseModel):
@@ -49,8 +56,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan],
-                state=[LegionJournal, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan],
+                event=[LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                state=[LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),

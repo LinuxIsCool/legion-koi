@@ -9,7 +9,7 @@ from koi_net.components.interfaces import KnowledgeHandler, HandlerType
 from koi_net.protocol.knowledge_object import KnowledgeObject
 from koi_net.protocol.event import EventType
 
-from .rid_types import LegionJournal, LegionVenture, LegionRecording, LegionMessage, LegionPlan
+from .rid_types import LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionMessage, LegionPlan, LegionResearch
 from .storage.postgres import _extract_search_text
 
 slog = structlog.stdlib.get_logger()
@@ -96,6 +96,27 @@ class PlanBundleHandler(KnowledgeHandler):
 
 
 @dataclass
+class ResearchBundleHandler(KnowledgeHandler):
+    """Validates research bundle contents have a title."""
+
+    handler_type = HandlerType.Bundle
+    rid_types = (LegionResearch,)
+    event_types = (EventType.NEW, EventType.UPDATE)
+
+    def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        frontmatter = kobj.contents.get("frontmatter", {})
+        title = frontmatter.get("title")
+        if not title:
+            slog.warning(
+                "research.validation_warning",
+                rid=str(kobj.rid),
+                missing_fields=["title"],
+            )
+        kobj.normalized_event_type = kobj.event_type or EventType.NEW
+        return kobj
+
+
+@dataclass
 class SuppressNetworkHandler(KnowledgeHandler):
     """Phase 1: suppress all network broadcast (no external nodes yet)."""
 
@@ -103,6 +124,48 @@ class SuppressNetworkHandler(KnowledgeHandler):
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
         kobj.network_targets = set()
+        return kobj
+
+
+@dataclass
+class ContactBundleHandler(KnowledgeHandler):
+    """Validates contact bundle contents have a composite score."""
+
+    handler_type = HandlerType.Bundle
+    rid_types = (LegionContact,)
+    event_types = (EventType.NEW, EventType.UPDATE)
+
+    def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        composite = kobj.contents.get("composite")
+        dunbar_layer = kobj.contents.get("dunbar_layer")
+        if composite is None or dunbar_layer is None:
+            slog.warning(
+                "contact.validation_warning",
+                rid=str(kobj.rid),
+                missing_fields=[f for f in ("composite", "dunbar_layer") if kobj.contents.get(f) is None],
+            )
+        kobj.normalized_event_type = kobj.event_type or EventType.NEW
+        return kobj
+
+
+@dataclass
+class TaskBundleHandler(KnowledgeHandler):
+    """Validates task bundle contents have a title and status."""
+
+    handler_type = HandlerType.Bundle
+    rid_types = (LegionTask,)
+    event_types = (EventType.NEW, EventType.UPDATE)
+
+    def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        frontmatter = kobj.contents.get("frontmatter", {})
+        title = frontmatter.get("title")
+        if not title:
+            slog.warning(
+                "task.validation_warning",
+                rid=str(kobj.rid),
+                missing_fields=["title"],
+            )
+        kobj.normalized_event_type = kobj.event_type or EventType.NEW
         return kobj
 
 

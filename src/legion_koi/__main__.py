@@ -14,6 +14,9 @@ from .sensors.recording_sensor import RecordingSensor
 from .sensors.message_sensor import MessageSensor
 from .sensors.message_filter import MessageFilter
 from .sensors.plan_sensor import PlanSensor
+from .sensors.research_sensor import ResearchSensor
+from .sensors.contact_sensor import ContactSensor
+from .sensors.backlog_sensor import BacklogSensor
 from .storage.postgres import PostgresStorage
 from .events.bus import EventBus
 from .events.pg_listener import PgListener
@@ -111,6 +114,11 @@ def main():
         state_path=Path(cfg.plan_state_path),
         kobj_push=node.kobj_queue.push,
     )
+    research_sensor = ResearchSensor(
+        watch_dir=Path(cfg.research_watch_dir).expanduser(),
+        state_path=Path(cfg.research_state_path),
+        kobj_push=node.kobj_queue.push,
+    )
 
     # Database sensors
     logging_sensor = LoggingSensor(
@@ -138,6 +146,17 @@ def main():
         state_path=Path(cfg.message_state_path),
         kobj_push=node.kobj_queue.push,
         poll_interval=cfg.message_poll_interval,
+    )
+    contact_sensor = ContactSensor(
+        db_path=Path(cfg.contact_db_path).expanduser(),
+        state_path=Path(cfg.contact_state_path),
+        kobj_push=node.kobj_queue.push,
+        poll_interval=cfg.contact_poll_interval,
+    )
+    backlog_sensor = BacklogSensor(
+        watch_dir=Path(cfg.backlog_watch_dir).expanduser(),
+        state_path=Path(cfg.backlog_state_path),
+        kobj_push=node.kobj_queue.push,
     )
 
     # Backfill PostgreSQL from rid_cache (bundles cached before PostgreSQL was added)
@@ -171,7 +190,7 @@ def main():
             event_bus = None
 
     # Initial scans
-    all_sensors = [journal_sensor, venture_sensor, plan_sensor, logging_sensor, recording_sensor, message_sensor]
+    all_sensors = [journal_sensor, venture_sensor, plan_sensor, research_sensor, backlog_sensor, logging_sensor, recording_sensor, message_sensor, contact_sensor]
     for sensor in all_sensors:
         bundles = sensor.scan_all()
         for bundle in bundles:
