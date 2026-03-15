@@ -169,10 +169,10 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         return f"{title} {goal} {body}"[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-pageindex":
-        node_title = contents.get("node_title", "")
-        summary = contents.get("summary", "")
-        body = contents.get("body", "")
-        tree_path = contents.get("tree_path", "")
+        node_title = contents.get("node_title") or ""
+        summary = contents.get("summary") or ""
+        body = contents.get("body") or ""
+        tree_path = contents.get("tree_path") or ""
         return f"{tree_path} {node_title} {summary} {body}"[:MAX_SEARCH_TEXT]
 
     if namespace == "legion.claude-research":
