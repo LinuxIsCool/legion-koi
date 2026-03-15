@@ -89,6 +89,27 @@ def extract_preamble(namespace: str, contents: dict) -> str:
             return f"Plan: {title}. Type: {plan_type}."
         return ""
 
+    if namespace == "legion.claude-contact":
+        display_name = contents.get("display_name") or ""
+        dunbar_layer = contents.get("dunbar_layer") or ""
+        if display_name:
+            parts = [f"Contact: {display_name}"]
+            if dunbar_layer:
+                parts.append(f"Layer: {dunbar_layer}")
+            return ". ".join(parts) + "."
+        return ""
+
+    if namespace == "legion.claude-task":
+        fm = contents.get("frontmatter", {})
+        title = fm.get("title") or ""
+        status = fm.get("status") or ""
+        if title:
+            parts = [f"Task: {title}"]
+            if status:
+                parts.append(f"Status: {status}")
+            return ". ".join(parts) + "."
+        return ""
+
     if namespace == "legion.claude-research":
         title = fm.get("title") or ""
         created = fm.get("created") or ""

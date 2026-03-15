@@ -182,6 +182,25 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         body = contents.get("body", "")
         return f"{title} {tags} {prompted_by} {body}"[:MAX_SEARCH_TEXT]
 
+    if namespace == "legion.claude-contact":
+        display_name = contents.get("display_name") or ""
+        dunbar_layer = contents.get("dunbar_layer") or ""
+        composite = contents.get("composite")
+        parts = [display_name]
+        if dunbar_layer:
+            parts.append(f"dunbar:{dunbar_layer}")
+        if composite is not None:
+            parts.append(f"score:{composite}")
+        return " ".join(parts)
+
+    if namespace == "legion.claude-task":
+        fm = contents.get("frontmatter", {})
+        title = fm.get("title", "")
+        status = fm.get("status", "")
+        milestone = fm.get("milestone", "")
+        body = contents.get("body", "")
+        return f"{title} {status} {milestone} {body}"[:MAX_SEARCH_TEXT]
+
     if namespace == "legion.claude-web.conversation":
         parts = []
         name = contents.get("name") or ""
