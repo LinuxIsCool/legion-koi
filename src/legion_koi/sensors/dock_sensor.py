@@ -1,6 +1,5 @@
 """Dock sensor — watches generated skill directory for SKILL.md changes."""
 
-import json
 import re
 from pathlib import Path
 
@@ -16,9 +15,6 @@ log = structlog.stdlib.get_logger()
 
 # Matches paths like .../generated/{owner}/{repo}/SKILL.md
 SKILL_PATH_PATTERN = re.compile(r".*/generated/([^/]+)/([^/]+)/SKILL\.md$")
-
-QUALITY_HISTORY_PATH = Path.home() / ".claude/local/dock/feedback/quality-history.jsonl"
-
 
 def extract_rid_parts(path: Path) -> tuple[str, str] | None:
     """Extract (owner, repo) from a generated SKILL.md path.
@@ -49,25 +45,6 @@ def read_version_file(repo_dir: Path) -> dict | None:
     return result
 
 
-def read_latest_quality(owner: str, repo: str) -> dict | None:
-    """Read the latest quality entry for this repo from quality-history.jsonl."""
-    if not QUALITY_HISTORY_PATH.exists():
-        return None
-
-    repo_key = f"{owner}/{repo}"
-    latest = None
-    try:
-        for line in QUALITY_HISTORY_PATH.read_text().splitlines():
-            if not line.strip():
-                continue
-            entry = json.loads(line)
-            if entry.get("repo") == repo_key or entry.get("name") == f"{owner}--{repo}":
-                latest = entry
-    except (OSError, json.JSONDecodeError):
-        pass
-    return latest
-
-
 class DockSensor(BaseSensor):
     def should_process(self, path: Path) -> bool:
         if path.name != "SKILL.md":
@@ -88,19 +65,18 @@ class DockSensor(BaseSensor):
         if change is None:
             return None
 
-        frontmatter, _body = parse_frontmatter(text)
+        frontmatter, body = parse_frontmatter(text)
         repo_dir = path.parent
 
         version = read_version_file(repo_dir)
         analyzed = (repo_dir / ".analyzed").exists()
-        quality = read_latest_quality(owner, repo)
 
         rid = LegionDock(owner=owner, repo=repo)
         contents = {
             "frontmatter": frontmatter,
+            "body": body,
             "version": version,
             "analyzed": analyzed,
-            "quality": quality,
             "file_path": str(path),
         }
 
