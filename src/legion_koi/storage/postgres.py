@@ -168,6 +168,20 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         body = contents.get("body", "")
         return f"{title} {goal} {body}"[:MAX_SEARCH_TEXT]
 
+    if namespace == "legion.claude-pageindex":
+        node_title = contents.get("node_title", "")
+        summary = contents.get("summary", "")
+        body = contents.get("body", "")
+        tree_path = contents.get("tree_path", "")
+        return f"{tree_path} {node_title} {summary} {body}"[:MAX_SEARCH_TEXT]
+
+    if namespace == "legion.claude-research":
+        title = fm.get("title", "")
+        tags = " ".join(fm.get("tags", []))
+        prompted_by = fm.get("prompted_by", "")
+        body = contents.get("body", "")
+        return f"{title} {tags} {prompted_by} {body}"[:MAX_SEARCH_TEXT]
+
     if namespace == "legion.claude-web.conversation":
         parts = []
         name = contents.get("name") or ""
