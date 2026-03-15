@@ -55,6 +55,12 @@ NAMESPACES_ORDER = [
     "legion.claude-web.memory",
     "legion.claude-code",
     "legion.claude-github",
+    "legion.claude-pageindex",
+    "legion.claude-contact",
+    "legion.claude-research",
+    "legion.claude-plan",
+    "legion.claude-task",
+    "legion.claude-backlog",
 ]
 
 RETRY_BACKOFF = RETRY_BACKOFF_SECONDS
@@ -371,6 +377,7 @@ def main():
 
         ns_stats = {"rids": 0, "chunks": 0, "skipped": 0}
         offset = 0
+        seen_rids = set()
 
         while True:
             try:
@@ -391,6 +398,16 @@ def main():
 
             if not rows:
                 break
+
+            # Filter out previously-seen RIDs that failed to embed (prevents infinite loop)
+            if not args.rechunk:
+                new_rows = [r for r in rows if r["rid"] not in seen_rids]
+                if not new_rows:
+                    stuck_rids = [r["rid"] for r in rows]
+                    print(f"  [{ns}] Skipping {len(stuck_rids)} stuck RIDs: {stuck_rids[:5]}")
+                    break
+                seen_rids.update(r["rid"] for r in new_rows)
+                rows = new_rows
 
             process_rows(rows, embedder, conn, table, args.config,
                          args.batch_size, ns_stats, start_time, ns, total_count,

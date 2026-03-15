@@ -9,6 +9,7 @@ from .handlers import (
     RecordingBundleHandler,
     MessageBundleHandler,
     PlanBundleHandler,
+    ResearchBundleHandler,
     SuppressNetworkHandler,
     PostgresStorageHandler,
     LoggingFinalHandler,
@@ -24,6 +25,7 @@ class LegionKoiNode(FullNode):
     recording_bundle_handler: RecordingBundleHandler = RecordingBundleHandler
     message_bundle_handler: MessageBundleHandler = MessageBundleHandler
     plan_bundle_handler: PlanBundleHandler = PlanBundleHandler
+    research_bundle_handler: ResearchBundleHandler = ResearchBundleHandler
     suppress_network_handler: SuppressNetworkHandler = SuppressNetworkHandler
     postgres_storage_handler: PostgresStorageHandler = PostgresStorageHandler
     logging_final_handler: LoggingFinalHandler = LoggingFinalHandler
