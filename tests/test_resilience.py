@@ -46,20 +46,22 @@ def test_open_raises_circuit_open_error():
 
 
 def test_half_open_after_recovery_timeout():
-    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0)
+    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0.5)
     with pytest.raises(ValueError):
         cb.call(_failing_fn)
     assert cb.state == CircuitState.OPEN
-    # With 0s timeout, next state check transitions to HALF_OPEN
-    time.sleep(0.01)
+    # Before timeout elapses, should still be OPEN
+    assert cb.state == CircuitState.OPEN
+    # After timeout elapses, transitions to HALF_OPEN
+    time.sleep(0.6)
     assert cb.state == CircuitState.HALF_OPEN
 
 
 def test_half_open_closes_on_success():
-    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0)
+    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0.5)
     with pytest.raises(ValueError):
         cb.call(_failing_fn)
-    time.sleep(0.01)
+    time.sleep(0.6)
     assert cb.state == CircuitState.HALF_OPEN
     result = cb.call(lambda: "recovered")
     assert result == "recovered"
@@ -67,10 +69,10 @@ def test_half_open_closes_on_success():
 
 
 def test_half_open_reopens_on_failure():
-    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0)
+    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0.5)
     with pytest.raises(ValueError):
         cb.call(_failing_fn)
-    time.sleep(0.01)
+    time.sleep(0.6)
     assert cb.state == CircuitState.HALF_OPEN
     with pytest.raises(ValueError):
         cb.call(_failing_fn)
@@ -134,10 +136,10 @@ def test_emits_service_degraded_on_open():
 
 def test_emits_service_down_on_reopen():
     bus = MagicMock()
-    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0, event_bus=bus)
+    cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout_seconds=0.5, event_bus=bus)
     with pytest.raises(ValueError):
         cb.call(_failing_fn)
-    time.sleep(0.01)
+    time.sleep(0.6)
     # Now in HALF_OPEN, fail again → reopen → service.down
     bus.reset_mock()
     with pytest.raises(ValueError):

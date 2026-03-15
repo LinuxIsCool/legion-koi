@@ -58,7 +58,7 @@ class CircuitBreaker:
         self,
         name: str,
         failure_threshold: int = CIRCUIT_FAILURE_THRESHOLD,
-        recovery_timeout_seconds: int = CIRCUIT_RECOVERY_TIMEOUT_SECONDS,
+        recovery_timeout_seconds: float = CIRCUIT_RECOVERY_TIMEOUT_SECONDS,
         event_bus=None,
     ):
         self.name = name
