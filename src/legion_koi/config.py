@@ -9,7 +9,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
+from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
 
 
 class SensorConfig(BaseModel):
@@ -46,6 +46,12 @@ class SensorConfig(BaseModel):
     browser_history_poll_interval: float = 300.0
     browser_history_batch_size: int = 500
     browser_history_enabled: bool = True
+    browser_history_suppression_path: str = "~/.config/claude-browser-history/suppressed_domains.txt"
+    browser_history_param_policy_path: str = "~/.config/claude-browser-history/param_policy.yaml"
+    # Persona sensors — slug-parameterized, one per persona
+    persona_slugs: list[str] = ["darren"]
+    persona_data_base_dir: str = "~/.claude/local/personas/data/"
+    persona_state_dir: str = "./state/"
 
 
 class PostgresConfig(BaseModel):
@@ -62,8 +68,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
-                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),

@@ -88,3 +88,16 @@ domains:
       Tool: {supertype: artifact, description: "Tools and commands used"}
       Error: {supertype: event, description: "Errors or failures encountered"}
       Pattern: {supertype: concept, description: "Behavioral or usage patterns"}
+
+  persona:
+    namespaces: [legion.claude-persona]
+    prompt_hint: "Persona data — observations, beliefs, facts, relationships, and style samples about a person. Focus on beliefs with evidence, relationships with context, and decisions with reasoning."
+    types:
+      Person: {supertype: agent, description: "People referenced in persona data"}
+      Belief: {supertype: concept, description: "Positions, opinions, or convictions held by the persona"}
+      Concept: {supertype: concept, description: "Ideas, frameworks, or mental models"}
+      Project: {supertype: artifact, description: "Projects the persona works on or references"}
+      Relationship: {supertype: concept, description: "Connections between the persona and other people"}
+      Decision: {supertype: event, description: "Choices or commitments the persona has made"}
+      Skill: {supertype: concept, description: "Technical or domain skills the persona possesses"}
+      Organization: {supertype: agent, description: "Companies, groups, or communities"}

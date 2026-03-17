@@ -10,6 +10,7 @@ from .recording import LegionRecording
 from .research import LegionResearch
 from .session import LegionSession
 from .task import LegionTask
+from .persona import LegionPersona
 from .venture import LegionVenture
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "LegionDock",
     "LegionJournal",
     "LegionMessage",
+    "LegionPersona",
     "LegionPlan",
     "LegionRecording",
     "LegionResearch",

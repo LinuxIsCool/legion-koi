@@ -18,6 +18,7 @@ from .sensors.research_sensor import ResearchSensor
 from .sensors.contact_sensor import ContactSensor
 from .sensors.backlog_sensor import BacklogSensor
 from .sensors.browser_history_sensor import BrowserHistorySensor
+from .sensors.persona_sensor import PersonaSensor
 from .sensors.firefox_profiles import discover_profiles
 from .storage.postgres import PostgresStorage
 from .events.bus import EventBus
@@ -161,6 +162,20 @@ def main():
         kobj_push=node.kobj_queue.push,
     )
 
+    # Persona sensors — one per configured slug
+    persona_sensors = []
+    for slug in cfg.persona_slugs:
+        watch_dir = Path(cfg.persona_data_base_dir).expanduser() / slug
+        state_path = Path(cfg.persona_state_dir) / f"persona_{slug}_state.json"
+        ps = PersonaSensor(
+            slug=slug,
+            watch_dir=watch_dir,
+            state_path=state_path,
+            kobj_push=node.kobj_queue.push,
+        )
+        persona_sensors.append(ps)
+        log.info("persona_sensor.configured", slug=slug, watch_dir=str(watch_dir))
+
     # Browser history sensor
     browser_history_sensor = None
     if cfg.browser_history_enabled:
@@ -175,6 +190,8 @@ def main():
                 kobj_push=node.kobj_queue.push,
                 poll_interval=cfg.browser_history_poll_interval,
                 batch_size=cfg.browser_history_batch_size,
+                suppression_path=Path(cfg.browser_history_suppression_path).expanduser(),
+                param_policy_path=Path(cfg.browser_history_param_policy_path).expanduser(),
             )
             log.info("browser_history.configured", profiles=[p.slug for p in profiles])
         else:
@@ -211,7 +228,7 @@ def main():
             event_bus = None
 
     # Initial scans
-    all_sensors = [journal_sensor, venture_sensor, plan_sensor, research_sensor, backlog_sensor, logging_sensor, recording_sensor, message_sensor, contact_sensor]
+    all_sensors = [journal_sensor, venture_sensor, plan_sensor, research_sensor, backlog_sensor, logging_sensor, recording_sensor, message_sensor, contact_sensor] + persona_sensors
     if browser_history_sensor:
         all_sensors.append(browser_history_sensor)
     for sensor in all_sensors:
