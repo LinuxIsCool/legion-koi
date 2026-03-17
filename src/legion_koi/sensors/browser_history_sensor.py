@@ -6,8 +6,10 @@ import json
 import shutil
 import sqlite3
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import structlog
 from rid_lib.ext import Bundle
@@ -19,9 +21,6 @@ from .firefox_profiles import FirefoxProfile
 from .url_sanitizer import sanitize_url, url_hash, is_suppressed
 
 log = structlog.stdlib.get_logger()
-
-# Track temp dirs associated with connections (sqlite3.Connection doesn't allow arbitrary attrs)
-_CONN_TMP_DIRS: dict[int, Path] = {}
 
 # Firefox visit type constants (moz_historyvisits.visit_type)
 VISIT_LINK = 1
@@ -90,9 +89,13 @@ class BrowserHistorySensor(DatabaseSensor):
             batch_size=batch_size,
         )
         self.profiles = profiles
+        # Track temp dirs per-profile for safe-connect cleanup (thread-safe)
+        self._tmp_dirs: dict[str, Path] = {}
 
-    def _safe_connect(self, places_path: Path) -> sqlite3.Connection:
+    def _safe_connect(self, places_path: Path) -> tuple[sqlite3.Connection, Path | None]:
         """Connect to places.sqlite, handling Firefox locks.
+
+        Returns (connection, tmp_dir_or_None). Caller must clean up tmp_dir.
 
         Strategy:
         1. Try read-only URI mode first
@@ -105,7 +108,7 @@ class BrowserHistorySensor(DatabaseSensor):
             conn.row_factory = sqlite3.Row
             # Test the connection
             conn.execute("SELECT 1 FROM moz_places LIMIT 1")
-            return conn
+            return conn, None
         except sqlite3.OperationalError:
             pass  # Fall through to copy strategy
 
@@ -125,23 +128,18 @@ class BrowserHistorySensor(DatabaseSensor):
             uri = f"file:{tmp_db}?immutable=1"
             conn = sqlite3.connect(uri, uri=True)
             conn.row_factory = sqlite3.Row
-
-            # Track tmp_dir for cleanup (can't set attrs on sqlite3.Connection)
-            _CONN_TMP_DIRS[id(conn)] = tmp_dir
-            return conn
+            return conn, tmp_dir
         except Exception:
             # Clean up temp dir on failure
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise
 
     @staticmethod
-    def _close_safe(conn: sqlite3.Connection) -> None:
+    def _close_safe(conn: sqlite3.Connection, tmp_dir: Path | None) -> None:
         """Close connection and clean up temp dir if present."""
-        conn_id = id(conn)
         try:
             conn.close()
         finally:
-            tmp_dir = _CONN_TMP_DIRS.pop(conn_id, None)
             if tmp_dir:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -150,9 +148,9 @@ class BrowserHistorySensor(DatabaseSensor):
         if not self.profiles:
             log.warning("browser_history.no_profiles")
             return
-        # Override base db_path check — we manage our own connections
+        # Override base db_path check — we manage our own connections per profile
         self._running = True
-        self._timer = __import__("threading").Timer(self.poll_interval, self._poll_loop)
+        self._timer = threading.Timer(self.poll_interval, self._poll_loop)
         self._timer.daemon = True
         self._timer.start()
         log.info(
@@ -178,13 +176,13 @@ class BrowserHistorySensor(DatabaseSensor):
 
     def _poll_profile(self, profile: FirefoxProfile) -> list[Bundle]:
         """Poll a single Firefox profile for history and bookmarks."""
-        conn = self._safe_connect(profile.places_path)
+        conn, tmp_dir = self._safe_connect(profile.places_path)
         try:
             bundles = self._poll_history(conn, profile)
             bundles.extend(self._poll_bookmarks(conn, profile))
             return bundles
         finally:
-            self._close_safe(conn)
+            self._close_safe(conn, tmp_dir)
 
     def _poll_history(self, conn: sqlite3.Connection, profile: FirefoxProfile) -> list[Bundle]:
         """Poll for new history visits since last high-water mark."""
@@ -286,6 +284,7 @@ class BrowserHistorySensor(DatabaseSensor):
                 "source_profile": profile.slug,
                 "source_machine": profile.machine_name,
                 "firefox_place_id": place_id,
+                "description": data["description"] or "",
             }
             if engagement:
                 contents["engagement"] = engagement
@@ -460,7 +459,6 @@ class BrowserHistorySensor(DatabaseSensor):
     def _extract_domain(url: str) -> str:
         """Extract domain from URL."""
         try:
-            from urllib.parse import urlparse
             parsed = urlparse(url)
             return parsed.netloc.lower()
         except Exception:

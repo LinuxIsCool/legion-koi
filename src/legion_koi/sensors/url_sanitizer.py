@@ -74,8 +74,8 @@ def sanitize_url(url: str) -> str:
             key_lower = key.lower()
             if key_lower in TRACKING_PARAMS:
                 continue
-            if key_lower in KEEP_PARAMS or key_lower not in TRACKING_PARAMS:
-                filtered[key] = values
+            # Keep all non-tracking params (Phase 2: restrict to KEEP_PARAMS only)
+            filtered[key] = values
         query = urlencode(filtered, doseq=True)
     else:
         query = ""
