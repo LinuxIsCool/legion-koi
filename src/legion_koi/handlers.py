@@ -9,7 +9,7 @@ from koi_net.components.interfaces import KnowledgeHandler, HandlerType
 from koi_net.protocol.knowledge_object import KnowledgeObject
 from koi_net.protocol.event import EventType
 
-from .rid_types import LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionMessage, LegionPlan, LegionResearch
+from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionMessage, LegionPlan, LegionResearch
 from .storage.postgres import _extract_search_text
 
 slog = structlog.stdlib.get_logger()
@@ -165,6 +165,25 @@ class TaskBundleHandler(KnowledgeHandler):
                 rid=str(kobj.rid),
                 missing_fields=["title"],
             )
+        kobj.normalized_event_type = kobj.event_type or EventType.NEW
+        return kobj
+
+
+@dataclass
+class BrowserHistoryBundleHandler(KnowledgeHandler):
+    """Validates browser history bundle has url and type."""
+
+    handler_type = HandlerType.Bundle
+    rid_types = (LegionBrowserHistory,)
+    event_types = (EventType.NEW, EventType.UPDATE)
+
+    def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        url = kobj.contents.get("url")
+        bundle_type = kobj.contents.get("type")
+        if not url:
+            slog.warning("browser_history.missing_url", rid=str(kobj.rid))
+        if bundle_type not in ("history", "bookmark"):
+            slog.warning("browser_history.invalid_type", rid=str(kobj.rid), type=bundle_type)
         kobj.normalized_event_type = kobj.event_type or EventType.NEW
         return kobj
 

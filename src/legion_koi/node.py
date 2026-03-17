@@ -4,6 +4,7 @@ from koi_net.core import FullNode
 
 from .config import LegionKoiConfig
 from .handlers import (
+    BrowserHistoryBundleHandler,
     JournalBundleHandler,
     VentureBundleHandler,
     RecordingBundleHandler,
@@ -20,6 +21,7 @@ class LegionKoiNode(FullNode):
     config_schema = LegionKoiConfig
 
     # Custom handlers (added as class attributes — assembler wires them)
+    browser_history_bundle_handler: BrowserHistoryBundleHandler = BrowserHistoryBundleHandler
     journal_bundle_handler: JournalBundleHandler = JournalBundleHandler
     venture_bundle_handler: VentureBundleHandler = VentureBundleHandler
     recording_bundle_handler: RecordingBundleHandler = RecordingBundleHandler

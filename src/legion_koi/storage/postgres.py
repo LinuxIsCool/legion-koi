@@ -201,6 +201,15 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
         body = contents.get("body", "")
         return f"{title} {status} {milestone} {body}"[:MAX_SEARCH_TEXT]
 
+    if namespace == "legion.claude-browser-history":
+        title = contents.get("title") or contents.get("page_title") or ""
+        url = contents.get("url") or ""
+        domain = contents.get("domain") or ""
+        tags = " ".join(contents.get("tags") or [])
+        folder = contents.get("folder_path") or ""
+        bundle_type = contents.get("type") or ""
+        return f"{title} {domain} {url} {tags} {folder} {bundle_type}"[:MAX_SEARCH_TEXT]
+
     if namespace == "legion.claude-web.conversation":
         parts = []
         name = contents.get("name") or ""

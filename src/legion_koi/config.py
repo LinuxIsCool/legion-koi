@@ -9,7 +9,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
+from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
 
 
 class SensorConfig(BaseModel):
@@ -40,6 +40,12 @@ class SensorConfig(BaseModel):
     contact_poll_interval: float = 300.0
     backlog_watch_dir: str = "~/.claude/local/backlog/"
     backlog_state_path: str = "./state/backlog_state.json"
+    browser_history_firefox_dir: str = "~/.config/mozilla/firefox"
+    browser_history_machine_name: str = "legion"
+    browser_history_state_path: str = "./state/browser_history_state.json"
+    browser_history_poll_interval: float = 300.0
+    browser_history_batch_size: int = 500
+    browser_history_enabled: bool = True
 
 
 class PostgresConfig(BaseModel):
@@ -56,8 +62,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
-                state=[LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),

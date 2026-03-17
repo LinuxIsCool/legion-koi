@@ -17,6 +17,8 @@ from .sensors.plan_sensor import PlanSensor
 from .sensors.research_sensor import ResearchSensor
 from .sensors.contact_sensor import ContactSensor
 from .sensors.backlog_sensor import BacklogSensor
+from .sensors.browser_history_sensor import BrowserHistorySensor
+from .sensors.firefox_profiles import discover_profiles
 from .storage.postgres import PostgresStorage
 from .events.bus import EventBus
 from .events.pg_listener import PgListener
@@ -159,6 +161,25 @@ def main():
         kobj_push=node.kobj_queue.push,
     )
 
+    # Browser history sensor
+    browser_history_sensor = None
+    if cfg.browser_history_enabled:
+        profiles = discover_profiles(
+            firefox_dir=Path(cfg.browser_history_firefox_dir).expanduser(),
+            machine_name=cfg.browser_history_machine_name,
+        )
+        if profiles:
+            browser_history_sensor = BrowserHistorySensor(
+                profiles=profiles,
+                state_path=Path(cfg.browser_history_state_path),
+                kobj_push=node.kobj_queue.push,
+                poll_interval=cfg.browser_history_poll_interval,
+                batch_size=cfg.browser_history_batch_size,
+            )
+            log.info("browser_history.configured", profiles=[p.slug for p in profiles])
+        else:
+            log.warning("browser_history.no_profiles", firefox_dir=cfg.browser_history_firefox_dir)
+
     # Backfill PostgreSQL from rid_cache (bundles cached before PostgreSQL was added)
     if storage:
         _backfill_postgres(storage, node.config.koi_net.cache_directory_path)
@@ -191,6 +212,8 @@ def main():
 
     # Initial scans
     all_sensors = [journal_sensor, venture_sensor, plan_sensor, research_sensor, backlog_sensor, logging_sensor, recording_sensor, message_sensor, contact_sensor]
+    if browser_history_sensor:
+        all_sensors.append(browser_history_sensor)
     for sensor in all_sensors:
         bundles = sensor.scan_all()
         for bundle in bundles:
