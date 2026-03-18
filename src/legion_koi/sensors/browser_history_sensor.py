@@ -18,7 +18,8 @@ from ..rid_types.browser_history import LegionBrowserHistory
 from . import state as sensor_state
 from .db_sensor import DatabaseSensor
 from .firefox_profiles import FirefoxProfile
-from .url_sanitizer import sanitize_url, url_hash, is_suppressed
+from .privacy_config import PrivacyConfig
+from .url_sanitizer import sanitize_url_ext, url_hash, is_suppressed
 
 log = structlog.stdlib.get_logger()
 
@@ -79,6 +80,8 @@ class BrowserHistorySensor(DatabaseSensor):
         kobj_push: callable,
         poll_interval: float = 300.0,
         batch_size: int = 500,
+        suppression_path: Path | None = None,
+        param_policy_path: Path | None = None,
     ):
         # Pass first profile's places_path for base class db_path
         super().__init__(
@@ -91,6 +94,11 @@ class BrowserHistorySensor(DatabaseSensor):
         self.profiles = profiles
         # Track temp dirs per-profile for safe-connect cleanup (thread-safe)
         self._tmp_dirs: dict[str, Path] = {}
+        # Privacy config — hot-reloads on mtime change each poll cycle
+        self._privacy = PrivacyConfig(
+            suppression_path=suppression_path or Path("~/.config/claude-browser-history/suppressed_domains.txt").expanduser(),
+            param_policy_path=param_policy_path or Path("~/.config/claude-browser-history/param_policy.yaml").expanduser(),
+        )
 
     def _safe_connect(self, places_path: Path) -> tuple[sqlite3.Connection, Path | None]:
         """Connect to places.sqlite, handling Firefox locks.
@@ -237,11 +245,12 @@ class BrowserHistorySensor(DatabaseSensor):
             url = data["url"] or ""
             domain = self._extract_domain(url)
 
-            # Suppression check
-            if is_suppressed(url, domain):
+            # Suppression check (uses configurable list)
+            if is_suppressed(url, domain, self._privacy.suppression):
                 continue
 
-            url_clean = sanitize_url(url)
+            sanitize_result = sanitize_url_ext(url, domain, self._privacy.params)
+            url_clean = sanitize_result.url
             entry_hash = url_hash(url)
 
             # Aggregate visit types
@@ -285,6 +294,12 @@ class BrowserHistorySensor(DatabaseSensor):
                 "source_machine": profile.machine_name,
                 "firefox_place_id": place_id,
                 "description": data["description"] or "",
+                "privacy": {
+                    "url_sanitized": True,
+                    "params_stripped": sanitize_result.params_stripped,
+                    "domain_checked": True,
+                    "policy_applied": sanitize_result.policy_applied,
+                },
             }
             if engagement:
                 contents["engagement"] = engagement
@@ -342,11 +357,16 @@ class BrowserHistorySensor(DatabaseSensor):
             domain = self._extract_domain(url)
             guid = row["guid"] or ""
 
-            # Suppression check
-            if url and is_suppressed(url, domain):
+            # Suppression check (uses configurable list)
+            if url and is_suppressed(url, domain, self._privacy.suppression):
                 continue
 
-            url_clean = sanitize_url(url) if url else ""
+            if url:
+                sanitize_result = sanitize_url_ext(url, domain, self._privacy.params)
+                url_clean = sanitize_result.url
+            else:
+                sanitize_result = sanitize_url_ext("", domain, self._privacy.params)
+                url_clean = ""
             max_modified = max(max_modified, row["lastModified"] or 0)
 
             # Build folder path
@@ -369,6 +389,12 @@ class BrowserHistorySensor(DatabaseSensor):
                 "guid": guid,
                 "source_profile": profile.slug,
                 "source_machine": profile.machine_name,
+                "privacy": {
+                    "url_sanitized": bool(url),
+                    "params_stripped": sanitize_result.params_stripped,
+                    "domain_checked": True,
+                    "policy_applied": sanitize_result.policy_applied,
+                },
             }
 
             content_hash = sensor_state.compute_hash(

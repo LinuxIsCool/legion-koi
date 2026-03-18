@@ -1,7 +1,15 @@
 """URL sanitization and hashing for browser history deduplication."""
 
+from __future__ import annotations
+
 import hashlib
+from dataclasses import dataclass, field
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .privacy_config import DomainSuppressionList, ParamPolicy
 
 
 # Tracking parameters to strip from URLs
@@ -44,6 +52,14 @@ SUPPRESSED_DOMAINS = {
     "signin.aws.amazon.com",
     "id.atlassian.com",
 }
+
+
+@dataclass
+class SanitizeResult:
+    """Extended sanitization result with privacy metadata."""
+    url: str
+    params_stripped: list[str] = field(default_factory=list)
+    policy_applied: str = "default"
 
 
 def sanitize_url(url: str) -> str:
@@ -95,16 +111,71 @@ def url_hash(url: str) -> str:
     return hashlib.sha256(clean.encode()).hexdigest()[:12]
 
 
-def is_suppressed(url: str, domain: str) -> bool:
+def is_suppressed(url: str, domain: str, suppression_list: DomainSuppressionList | None = None) -> bool:
     """Check if a URL should be excluded from ingestion.
 
     Suppresses:
     - Internal browser schemes (about:, chrome:, moz-extension:, etc.)
-    - Known auth/banking domains
+    - Known auth/banking domains (hardcoded fallback or configurable suppression list)
     """
     parsed = urlparse(url)
     if parsed.scheme.lower() in SUPPRESSED_SCHEMES:
         return True
+    if suppression_list is not None:
+        return suppression_list.is_suppressed(domain)
     if domain.lower() in SUPPRESSED_DOMAINS:
         return True
     return False
+
+
+def sanitize_url_ext(url: str, domain: str, param_policy: ParamPolicy | None = None) -> SanitizeResult:
+    """Extended sanitization with privacy tracking metadata.
+
+    Same normalization as sanitize_url() but uses ParamPolicy for param filtering
+    and returns metadata about what was stripped.
+    """
+    if not url:
+        return SanitizeResult(url="")
+
+    parsed = urlparse(url)
+
+    # Suppress internal browser URLs early
+    if parsed.scheme.lower() in SUPPRESSED_SCHEMES:
+        return SanitizeResult(url=url)
+
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+
+    params_stripped: list[str] = []
+    policy_applied = "default"
+
+    # Apply param policy
+    if parsed.query and param_policy is not None:
+        query, params_stripped, policy_applied = param_policy.resolve(domain, parsed.query)
+    elif parsed.query:
+        # Fallback: same logic as sanitize_url()
+        params = parse_qs(parsed.query, keep_blank_values=False)
+        filtered = {}
+        for key, values in params.items():
+            key_lower = key.lower()
+            if key_lower in TRACKING_PARAMS:
+                params_stripped.append(key)
+                continue
+            filtered[key] = values
+        query = urlencode(filtered, doseq=True)
+    else:
+        query = ""
+
+    # Normalize path: strip trailing slash unless it's the root
+    path = parsed.path
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+
+    # Drop fragment
+    clean_url = urlunparse((scheme, netloc, path, parsed.params, query, ""))
+
+    return SanitizeResult(
+        url=clean_url,
+        params_stripped=params_stripped,
+        policy_applied=policy_applied,
+    )

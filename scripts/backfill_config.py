@@ -172,6 +172,7 @@ def fetch_unembedded(conn, table, ns, fetch_size, contextual=False):
         SELECT {cols} FROM bundles b
         LEFT JOIN {table} e ON b.rid = e.rid
         WHERE e.rid IS NULL AND b.namespace = %s
+          AND b.search_text IS NOT NULL AND b.search_text != ''
           {JUNK_FILTERS}
         ORDER BY b.created_at
         LIMIT %s
@@ -202,6 +203,7 @@ def count_unembedded(conn, table, ns):
         SELECT count(*) AS cnt FROM bundles b
         LEFT JOIN {table} e ON b.rid = e.rid
         WHERE e.rid IS NULL AND b.namespace = %s
+          AND b.search_text IS NOT NULL AND b.search_text != ''
           {JUNK_FILTERS}
         """,
         (ns, *JUNK_PARAMS),

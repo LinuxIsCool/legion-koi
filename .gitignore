@@ -19,3 +19,5 @@ config.yaml
 dropped_logs.txt
 .letta/
 log.ndjson.*
+dropped_logs.txt.*
+personal_koi.db
