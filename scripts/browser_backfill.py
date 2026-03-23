@@ -88,6 +88,7 @@ def _safe_connect(places_path: Path) -> tuple[sqlite3.Connection, Path | None]:
         uri = f"file:{places_path}?mode=ro"
         conn = sqlite3.connect(uri, uri=True)
         conn.row_factory = sqlite3.Row
+        conn.text_factory = lambda b: b.decode("utf-8", "replace")
         conn.execute("SELECT 1 FROM moz_places LIMIT 1")
         return conn, None
     except sqlite3.OperationalError:
@@ -106,6 +107,7 @@ def _safe_connect(places_path: Path) -> tuple[sqlite3.Connection, Path | None]:
         uri = f"file:{tmp_db}?immutable=1"
         conn = sqlite3.connect(uri, uri=True)
         conn.row_factory = sqlite3.Row
+        conn.text_factory = lambda b: b.decode("utf-8", "replace")
         return conn, tmp_dir
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)
