@@ -8,6 +8,7 @@ from .message import LegionMessage
 from .plan import LegionPlan
 from .recording import LegionRecording
 from .research import LegionResearch
+from .transcript import LegionTranscript
 from .session import LegionSession
 from .task import LegionTask
 from .persona import LegionPersona
@@ -25,5 +26,6 @@ __all__ = [
     "LegionResearch",
     "LegionSession",
     "LegionTask",
+    "LegionTranscript",
     "LegionVenture",
 ]

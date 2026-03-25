@@ -9,7 +9,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
+from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
 
 
 class SensorConfig(BaseModel):
@@ -23,6 +23,9 @@ class SensorConfig(BaseModel):
     recording_db_path: str = "~/.claude/local/recordings/recordings.db"
     recording_state_path: str = "./state/recording_state.json"
     recording_poll_interval: float = 120.0
+    transcript_db_path: str = "~/.claude/local/transcripts/transcripts.db"
+    transcript_state_path: str = "./state/transcript_state.json"
+    transcript_poll_interval: float = 120.0
     message_db_path: str = "~/.claude/local/messages/messages.db"
     message_state_path: str = "./state/message_state.json"
     message_poll_interval: float = 60.0
@@ -68,8 +71,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
-                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),

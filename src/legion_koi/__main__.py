@@ -11,6 +11,7 @@ from .sensors.journal_sensor import JournalSensor
 from .sensors.venture_sensor import VentureSensor
 from .sensors.logging_sensor import LoggingSensor
 from .sensors.recording_sensor import RecordingSensor
+from .sensors.transcript_sensor import TranscriptSensor
 from .sensors.message_sensor import MessageSensor
 from .sensors.message_filter import MessageFilter
 from .sensors.plan_sensor import PlanSensor
@@ -136,6 +137,12 @@ def main():
         kobj_push=node.kobj_queue.push,
         poll_interval=cfg.recording_poll_interval,
     )
+    transcript_sensor = TranscriptSensor(
+        db_path=Path(cfg.transcript_db_path).expanduser(),
+        state_path=Path(cfg.transcript_state_path),
+        kobj_push=node.kobj_queue.push,
+        poll_interval=cfg.transcript_poll_interval,
+    )
     message_filter = MessageFilter(
         messages_db_path=Path(cfg.message_db_path).expanduser(),
         self_sender_ids=cfg.message_self_sender_ids,
@@ -228,7 +235,7 @@ def main():
             event_bus = None
 
     # Initial scans
-    all_sensors = [journal_sensor, venture_sensor, plan_sensor, research_sensor, backlog_sensor, logging_sensor, recording_sensor, message_sensor, contact_sensor] + persona_sensors
+    all_sensors = [journal_sensor, venture_sensor, plan_sensor, research_sensor, backlog_sensor, logging_sensor, recording_sensor, transcript_sensor, message_sensor, contact_sensor] + persona_sensors
     if browser_history_sensor:
         all_sensors.append(browser_history_sensor)
     for sensor in all_sensors:
