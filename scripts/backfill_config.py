@@ -44,23 +44,43 @@ from legion_koi.storage.postgres import PostgresStorage, _config_table_name
 DSN = os.environ.get("LEGION_KOI_DSN", "postgresql://localhost/personal_koi")
 
 NAMESPACES_ORDER = [
+    # System
     "koi-net.node",
+    # High-value knowledge (embed first — small, dense, searchable)
     "legion.claude-venture",
-    "legion.claude-logging",
     "legion.claude-journal",
+    "legion.claude-plan",
+    "legion.claude-research",
+    "legion.claude-task",
+    "legion.claude-backlog",
+    # New hook namespaces (2026-03-24 wave)
+    "legion.claude-transcript",
+    "legion.claude-rhythm",
+    "legion.claude-ground",
+    "legion.claude-prompt",
+    "legion.claude-finance",
+    "legion.claude-scratchpad",
+    "legion.claude-dream",
+    "legion.claude-inventory",
+    "legion.claude-calendar",
+    "legion.claude-chore",
+    "legion.claude-schedule",
+    "legion.claude-outbox",
+    "legion.claude-roadmap",
+    # Sensor namespaces — medium volume
+    "legion.claude-logging",
     "legion.claude-recording",
-    "legion.claude-message",
     "legion.claude-web.conversation",
     "legion.claude-web.project",
     "legion.claude-web.memory",
     "legion.claude-code",
     "legion.claude-github",
-    "legion.claude-pageindex",
     "legion.claude-contact",
-    "legion.claude-research",
-    "legion.claude-plan",
-    "legion.claude-task",
-    "legion.claude-backlog",
+    # High volume (last — can run unattended)
+    "legion.claude-pageindex",
+    "legion.claude-persona",
+    "legion.claude-browser-history",
+    "legion.claude-message",
 ]
 
 RETRY_BACKOFF = RETRY_BACKOFF_SECONDS
