@@ -1,6 +1,7 @@
 """Legion RID types for the KOI-net protocol."""
 
 from .browser_history import LegionBrowserHistory
+from .changelog import LegionChangelog
 from .contact import LegionContact
 from .dock import LegionDock
 from .journal import LegionJournal
@@ -17,6 +18,7 @@ from .youtube import LegionYoutube
 
 __all__ = [
     "LegionBrowserHistory",
+    "LegionChangelog",
     "LegionContact",
     "LegionDock",
     "LegionJournal",

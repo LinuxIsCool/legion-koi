@@ -22,6 +22,8 @@ from .sensors.browser_history_sensor import BrowserHistorySensor
 from .sensors.persona_sensor import PersonaSensor
 from .sensors.firefox_profiles import discover_profiles
 from .sensors.youtube_sensor import YouTubeSensor, YouTubeChannel
+from .sensors.changelog_sensor import ChangelogSensor, ChangelogRepo
+from .sensors.dock_sensor import DockSensor
 from .storage.postgres import PostgresStorage
 from .events.bus import EventBus
 from .events.pg_listener import PgListener
@@ -223,6 +225,31 @@ def main():
             poll_interval=cfg.youtube_poll_interval,
         )
 
+    # Changelog sensor — tracks Claude Code releases from docked repos
+    changelog_sensor = None
+    if cfg.changelog_enabled:
+        cl_repos = [
+            ChangelogRepo(owner=r["owner"], repo=r["repo"])
+            for r in cfg.changelog_repos
+        ]
+        changelog_sensor = ChangelogSensor(
+            repos=cl_repos,
+            dock_repos_base=Path(cfg.changelog_dock_repos_base).expanduser(),
+            state_path=Path(cfg.changelog_state_path),
+            kobj_push=node.kobj_queue.push,
+            poll_interval=cfg.changelog_poll_interval,
+            auto_update=cfg.changelog_auto_update,
+        )
+
+    # Dock sensor — watches generated SKILL.md files (inotify)
+    dock_sensor = None
+    if cfg.dock_enabled:
+        dock_sensor = DockSensor(
+            watch_dir=Path(cfg.dock_generated_dir).expanduser(),
+            state_path=Path(cfg.dock_state_path),
+            kobj_push=node.kobj_queue.push,
+        )
+
     # Backfill PostgreSQL from rid_cache (bundles cached before PostgreSQL was added)
     if storage:
         _backfill_postgres(storage, node.config.koi_net.cache_directory_path)
@@ -259,6 +286,10 @@ def main():
         all_sensors.append(browser_history_sensor)
     if youtube_sensor:
         all_sensors.append(youtube_sensor)
+    if changelog_sensor:
+        all_sensors.append(changelog_sensor)
+    if dock_sensor:
+        all_sensors.append(dock_sensor)
     for sensor in all_sensors:
         bundles = sensor.scan_all()
         for bundle in bundles:

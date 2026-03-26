@@ -9,7 +9,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube
+from .rid_types import LegionBrowserHistory, LegionChangelog, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube
 
 
 class SensorConfig(BaseModel):
@@ -62,6 +62,19 @@ class SensorConfig(BaseModel):
     youtube_state_path: str = "./state/youtube_state.json"
     youtube_poll_interval: float = 604800.0  # 1 week (Monday uploads)
     youtube_enabled: bool = True
+    # Changelog sensor — polls docked repos for new release versions
+    changelog_repos: list[dict] = [
+        {"owner": "anthropics", "repo": "claude-code"},
+    ]
+    changelog_state_path: str = "./state/changelog_state.json"
+    changelog_poll_interval: float = 21600.0  # 6 hours
+    changelog_auto_update: bool = True
+    changelog_enabled: bool = True
+    changelog_dock_repos_base: str = "~/.claude/local/dock/repos/"
+    # Dock sensor (BaseSensor, inotify — already implemented, needs wiring)
+    dock_generated_dir: str = "~/.claude/local/dock/generated/"
+    dock_state_path: str = "./state/dock_state.json"
+    dock_enabled: bool = True
 
 
 class PostgresConfig(BaseModel):
@@ -78,8 +91,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube],
-                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube],
+                event=[LegionBrowserHistory, LegionChangelog, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube],
+                state=[LegionBrowserHistory, LegionChangelog, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),
