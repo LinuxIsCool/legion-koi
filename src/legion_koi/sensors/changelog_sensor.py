@@ -37,7 +37,7 @@ KNOWN_HOOK_TYPES = frozenset({
     "SessionStart", "SessionEnd",
     "UserPromptSubmit", "Notification", "Elicitation", "ElicitationResult",
     "PreToolUse", "PermissionRequest", "PostToolUse", "PostToolUseFailure",
-    "SubagentStart", "SubagentStop", "TeammateIdle", "TaskCompleted",
+    "SubagentStart", "SubagentStop", "TeammateIdle", "TaskCreated", "TaskCompleted",
     "Stop", "StopFailure",
     "InstructionsLoaded", "ConfigChange", "CwdChanged", "FileChanged",
     "WorktreeCreate", "WorktreeRemove",

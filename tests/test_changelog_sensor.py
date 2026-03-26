@@ -166,8 +166,8 @@ class TestExtractHookTypes:
         assert found == set()
 
     def test_known_hook_types_count(self):
-        """Sanity check: we have 24 known hook types as of 2026-03-26."""
-        assert len(KNOWN_HOOK_TYPES) == 24
+        """Sanity check: we have 25 known hook types as of v2.1.84."""
+        assert len(KNOWN_HOOK_TYPES) == 25
 
 
 # ---------------------------------------------------------------------------
