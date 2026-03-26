@@ -48,6 +48,9 @@ class ExtractConsumer(EventConsumer):
 
         contents = bundle["contents"]
         search_text = _extract_search_text(namespace, contents)
+        # Fallback to stored search_text (e.g. YouTube transcripts stored directly)
+        if not search_text or not search_text.strip():
+            search_text = bundle.get("search_text") or ""
         if not search_text or not search_text.strip():
             return
 

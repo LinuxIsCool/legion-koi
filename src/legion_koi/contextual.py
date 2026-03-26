@@ -135,6 +135,19 @@ def extract_preamble(namespace: str, contents: dict) -> str:
             return f"Repository: {reference}."
         return ""
 
+    if namespace == "legion.claude-youtube":
+        title = contents.get("title") or ""
+        channel = contents.get("channel_handle") or contents.get("channel") or ""
+        upload_date = contents.get("upload_date") or ""
+        if title:
+            parts = [f"YouTube: {title}"]
+            if channel:
+                parts.append(f"Channel: {channel}")
+            if upload_date:
+                parts.append(f"Date: {upload_date}")
+            return ". ".join(parts) + "."
+        return ""
+
     # Default fallback
     return f"Document from {namespace}."
 

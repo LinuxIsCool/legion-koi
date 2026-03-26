@@ -13,6 +13,7 @@ from .session import LegionSession
 from .task import LegionTask
 from .persona import LegionPersona
 from .venture import LegionVenture
+from .youtube import LegionYoutube
 
 __all__ = [
     "LegionBrowserHistory",
@@ -28,4 +29,5 @@ __all__ = [
     "LegionTask",
     "LegionTranscript",
     "LegionVenture",
+    "LegionYoutube",
 ]

@@ -277,6 +277,14 @@ def _extract_search_text(namespace: str, contents: dict) -> str:
             parts.append(readme)
         return "\n".join(parts)[:MAX_SEARCH_TEXT]
 
+    if namespace == "legion.claude-youtube":
+        title = contents.get("title") or ""
+        desc = (contents.get("description") or "")[:1000]
+        tags = " ".join(contents.get("tags") or [])
+        channel = contents.get("channel_handle") or contents.get("channel") or ""
+        parts = [p for p in [title, channel, tags, desc] if p]
+        return "\n".join(parts)[:MAX_SEARCH_TEXT]
+
     # Fallback: JSON dump
     text = json.dumps(contents)
     return text[:MAX_SEARCH_TEXT]

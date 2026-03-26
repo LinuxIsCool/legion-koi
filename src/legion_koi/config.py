@@ -9,7 +9,7 @@ from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
 from koi_net.protocol.node import NodeProvides
 
-from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch
+from .rid_types import LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube
 
 
 class SensorConfig(BaseModel):
@@ -55,6 +55,13 @@ class SensorConfig(BaseModel):
     persona_slugs: list[str] = ["darren"]
     persona_data_base_dir: str = "~/.claude/local/personas/data/"
     persona_state_dir: str = "./state/"
+    # YouTube channel sensors — poll for new videos via yt-dlp
+    youtube_channels: list[dict] = [
+        {"handle": "indydevdan", "channel_id": "UC_x36zCEGilGpB1m-V4gmjg", "max_videos": 15},
+    ]
+    youtube_state_path: str = "./state/youtube_state.json"
+    youtube_poll_interval: float = 604800.0  # 1 week (Monday uploads)
+    youtube_enabled: bool = True
 
 
 class PostgresConfig(BaseModel):
@@ -71,8 +78,8 @@ class LegionKoiConfig(FullNodeConfig):
         node_name="legion-koi",
         node_profile=FullNodeProfile(
             provides=NodeProvides(
-                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
-                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch],
+                event=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube],
+                state=[LegionBrowserHistory, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube],
             ),
         ),
         cache_directory_path=Path(".rid_cache"),

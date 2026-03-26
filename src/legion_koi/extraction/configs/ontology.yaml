@@ -89,6 +89,17 @@ domains:
       Error: {supertype: event, description: "Errors or failures encountered"}
       Pattern: {supertype: concept, description: "Behavioral or usage patterns"}
 
+  youtube:
+    namespaces: [legion.claude-youtube]
+    prompt_hint: "YouTube video transcripts from a developer channel. Focus on tools demonstrated, projects built, coding patterns, AI techniques, and key takeaways. Speaker is typically the channel host."
+    types:
+      Person: {supertype: agent, description: "People mentioned or interviewed"}
+      Tool: {supertype: artifact, description: "Software tools, libraries, frameworks, APIs demonstrated"}
+      Concept: {supertype: concept, description: "Programming patterns, AI techniques, architectural approaches"}
+      Project: {supertype: artifact, description: "Projects built or demonstrated in the video"}
+      Organization: {supertype: agent, description: "Companies, platforms, services mentioned"}
+      Decision: {supertype: event, description: "Technical choices or recommendations made"}
+
   persona:
     namespaces: [legion.claude-persona]
     prompt_hint: "Persona data — observations, beliefs, facts, relationships, and style samples about a person. Focus on beliefs with evidence, relationships with context, and decisions with reasoning."

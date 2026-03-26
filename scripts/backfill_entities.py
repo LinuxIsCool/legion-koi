@@ -32,6 +32,7 @@ NAMESPACES_ORDER = [
     "legion.claude-web.conversation",
     "legion.claude-recording",
     "legion.claude-github",
+    "legion.claude-youtube",
     "legion.claude-code",
     "legion.claude-message",
 ]

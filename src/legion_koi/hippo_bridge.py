@@ -20,6 +20,7 @@ NAMESPACE_MAP = {
     "inventory": "legion.claude-inventory",
     "ground": "legion.claude-ground",
     "task": "legion.claude-backlog",
+    "youtube": "legion.claude-youtube",
 }
 
 # PPR defaults

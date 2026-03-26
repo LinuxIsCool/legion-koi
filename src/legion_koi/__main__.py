@@ -21,6 +21,7 @@ from .sensors.backlog_sensor import BacklogSensor
 from .sensors.browser_history_sensor import BrowserHistorySensor
 from .sensors.persona_sensor import PersonaSensor
 from .sensors.firefox_profiles import discover_profiles
+from .sensors.youtube_sensor import YouTubeSensor, YouTubeChannel
 from .storage.postgres import PostgresStorage
 from .events.bus import EventBus
 from .events.pg_listener import PgListener
@@ -204,6 +205,24 @@ def main():
         else:
             log.warning("browser_history.no_profiles", firefox_dir=cfg.browser_history_firefox_dir)
 
+    # YouTube channel sensor
+    youtube_sensor = None
+    if cfg.youtube_enabled and cfg.youtube_channels:
+        yt_channels = [
+            YouTubeChannel(
+                handle=ch["handle"],
+                channel_id=ch["channel_id"],
+                max_videos=ch.get("max_videos", 15),
+            )
+            for ch in cfg.youtube_channels
+        ]
+        youtube_sensor = YouTubeSensor(
+            channels=yt_channels,
+            state_path=Path(cfg.youtube_state_path),
+            kobj_push=node.kobj_queue.push,
+            poll_interval=cfg.youtube_poll_interval,
+        )
+
     # Backfill PostgreSQL from rid_cache (bundles cached before PostgreSQL was added)
     if storage:
         _backfill_postgres(storage, node.config.koi_net.cache_directory_path)
@@ -238,6 +257,8 @@ def main():
     all_sensors = [journal_sensor, venture_sensor, plan_sensor, research_sensor, backlog_sensor, logging_sensor, recording_sensor, transcript_sensor, message_sensor, contact_sensor] + persona_sensors
     if browser_history_sensor:
         all_sensors.append(browser_history_sensor)
+    if youtube_sensor:
+        all_sensors.append(youtube_sensor)
     for sensor in all_sensors:
         bundles = sensor.scan_all()
         for bundle in bundles:
