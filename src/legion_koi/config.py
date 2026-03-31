@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from koi_net.config.full_node import FullNodeConfig, FullNodeProfile
 from koi_net.config.koi_net_config import KoiNetConfig
 from koi_net.config.server_config import ServerConfig
+from koi_net.config.poller_config import PollerConfig
 from koi_net.protocol.node import NodeProvides
 
 from .rid_types import LegionBrowserHistory, LegionChangelog, LegionContact, LegionJournal, LegionPersona, LegionTask, LegionTranscript, LegionVenture, LegionRecording, LegionSession, LegionMessage, LegionPlan, LegionResearch, LegionYoutube
@@ -87,6 +88,9 @@ class LegionKoiConfig(FullNodeConfig):
     sensors: SensorConfig = Field(default_factory=SensorConfig)
     postgres: PostgresConfig = Field(default_factory=PostgresConfig)
     server: ServerConfig = ServerConfig(port=8100)
+    # Poller — FullNode doesn't include this, but we need it to poll peers
+    # (Darren's node) for vault-file federation. Default 60s interval.
+    poller: PollerConfig = PollerConfig(polling_interval=60)
     koi_net: KoiNetConfig = KoiNetConfig(
         node_name="legion-koi",
         node_profile=FullNodeProfile(
