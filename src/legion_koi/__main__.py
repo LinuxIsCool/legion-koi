@@ -24,6 +24,7 @@ from .sensors.firefox_profiles import discover_profiles
 from .sensors.youtube_sensor import YouTubeSensor, YouTubeChannel
 from .sensors.changelog_sensor import ChangelogSensor, ChangelogRepo
 from .sensors.dock_sensor import DockSensor
+from .sensors.voice_sensor import VoiceSensor
 from .storage.postgres import PostgresStorage
 from .events.bus import EventBus
 from .events.pg_listener import PgListener
@@ -250,6 +251,13 @@ def main():
             kobj_push=node.kobj_queue.push,
         )
 
+    # Voice sensor — polls voice event JSONL logs (60s interval)
+    voice_sensor = VoiceSensor(
+        state_path=Path("~/.claude/local/voice/sensor-state.json").expanduser(),
+        kobj_push=node.kobj_queue.push,
+        poll_interval=60.0,
+    )
+
     # Backfill PostgreSQL from rid_cache (bundles cached before PostgreSQL was added)
     if storage:
         _backfill_postgres(storage, node.config.koi_net.cache_directory_path)
@@ -290,6 +298,7 @@ def main():
         all_sensors.append(changelog_sensor)
     if dock_sensor:
         all_sensors.append(dock_sensor)
+    all_sensors.append(voice_sensor)
     for sensor in all_sensors:
         bundles = sensor.scan_all()
         for bundle in bundles:
