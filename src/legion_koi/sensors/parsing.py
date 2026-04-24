@@ -31,6 +31,9 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
     yaml.preserve_quotes = True
     try:
         fm = yaml.load(StringIO(parts[1])) or {}
+        # Guard: yaml.load can return a str when frontmatter body is scalar YAML.
+        if not isinstance(fm, dict):
+            fm = {}
         fm = _make_serializable(fm)
     except Exception:
         fm = {}

@@ -300,10 +300,19 @@ def main():
         all_sensors.append(dock_sensor)
     all_sensors.append(voice_sensor)
     for sensor in all_sensors:
-        bundles = sensor.scan_all()
+        try:
+            bundles = sensor.scan_all()
+        except Exception:
+            log.exception("scan.sensor_failed", sensor=sensor.__class__.__name__)
+            continue
+        push_errors = 0
         for bundle in bundles:
-            node.kobj_queue.push(bundle=bundle)
-        log.info("scan.complete", sensor=sensor.__class__.__name__, count=len(bundles))
+            try:
+                node.kobj_queue.push(bundle=bundle)
+            except Exception:
+                push_errors += 1
+                log.exception("scan.push_error", sensor=sensor.__class__.__name__, bundle_rid=str(getattr(bundle, 'rid', '?')))
+        log.info("scan.complete", sensor=sensor.__class__.__name__, count=len(bundles), push_errors=push_errors)
 
     # Start live monitoring
     for sensor in all_sensors:
