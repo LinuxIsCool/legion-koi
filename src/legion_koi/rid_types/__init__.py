@@ -7,6 +7,7 @@ from .dock import LegionDock
 from .journal import LegionJournal
 from .message import LegionMessage
 from .plan import LegionPlan
+from .quartz import LegionQuartzPage
 from .recording import LegionRecording
 from .research import LegionResearch
 from .transcript import LegionTranscript
@@ -25,6 +26,7 @@ __all__ = [
     "LegionMessage",
     "LegionPersona",
     "LegionPlan",
+    "LegionQuartzPage",
     "LegionRecording",
     "LegionResearch",
     "LegionSession",
