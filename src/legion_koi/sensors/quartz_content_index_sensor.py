@@ -9,20 +9,30 @@ This is a one-file-many-bundles sensor — distinct from the per-file pattern
 that JournalSensor + co. follow. We override scan_all() and _on_file_event()
 to translate a single file mutation into N bundle emissions.
 
-Standalone path
----------------
+Standalone path (CURRENT — Phase 3 V0.2)
+----------------------------------------
 build-rhythm.sh fires this module directly after each successful atomic public
-swap. In that mode we don't have a running koi-net node — we connect to
-PostgresStorage and upsert bundles ourselves.
+swap. We connect to PostgresStorage and upsert bundles ourselves. This is the
+ONLY execution surface today.
 
   python3 -m legion_koi.sensors.quartz_content_index_sensor
 
-Long-running path
------------------
-__main__.py instantiates QuartzContentIndexSensor(...) like the other sensors,
-calls scan_all() on startup + start() for live watchdog monitoring. Live
-mutation of contentIndex.json (the build's atomic-swapped public/) triggers
-re-scan + delta emission.
+Important: standalone path does NOT call storage.initialize() — assumes the
+live legion-koi node has already created the schema + triggers. Calling
+initialize() on a live DB races against NOTIFY listeners (re-attaches the
+bundles_notify trigger).
+
+Long-running path (FUTURE — Phase 4+, NOT YET WIRED)
+----------------------------------------------------
+The scan_all()-returns-list[Bundle] shape and watchdog start() method exist
+ready for legion-koi __main__.py to instantiate this sensor like the other
+17. Today __main__.py does NOT include QuartzContentIndexSensor in
+all_sensors. Wiring requires:
+  1. Import + instantiate alongside JournalSensor / VentureSensor / etc.
+  2. Append to all_sensors at __main__.py:292.
+  3. Decide watch_dir semantics — public/static/ is re-created on every
+     atomic swap, so the watchdog Observer needs a re-arm hook on the swap
+     event. Easier: keep build-rhythm as the trigger and skip watchdog.
 """
 from __future__ import annotations
 
@@ -50,6 +60,12 @@ DEFAULT_STATE_PATH = Path.home() / ".claude/local/quartz/sensor-state.json"
 # research synthesis) can hit 200KB+. 50KB cap keeps bundle rows reasonable
 # while preserving most semantic content for downstream embed/extract.
 MAX_CONTENT_BYTES = 50_000
+
+# State persistence cadence in scan loops. Save dedup state every N entries
+# so a process kill mid-loop (OOM, SIGTERM) does not lose all dedup
+# bookkeeping (review §4.1 fix). 500 chosen because state file ~760KB,
+# atomic write ~10ms — negligible at every-500.
+STATE_SAVE_EVERY = 500
 
 
 @dataclass
@@ -177,11 +193,19 @@ class QuartzContentIndexSensor(BaseSensor):
         result.total_entries = len(index)
         # Build set of slugs we saw this scan, for forward orphan detection.
         seen: set[str] = set()
+        # Periodic state save (review §4.1) — survive partial scans.
+        emitted_since_save = 0
         for slug, entry in index.items():
             try:
                 built = _build_bundle(slug, entry, self.base_url)
                 if built is None:
                     result.error_count += 1
+                    if result.error_count <= 10:  # cap log spam (review §4.2)
+                        log.info(
+                            "quartz.entry.skip_non_dict",
+                            slug=slug,
+                            entry_type=type(entry).__name__,
+                        )
                     continue
                 bundle, sha = built
                 seen.add(slug)
@@ -198,11 +222,21 @@ class QuartzContentIndexSensor(BaseSensor):
                 if collect is not None:
                     collect.append(bundle)
                 self.state[slug] = sha
+                emitted_since_save += 1
+                if emitted_since_save >= STATE_SAVE_EVERY:
+                    try:
+                        sensor_state.save(self.state_path, self.state)
+                    except Exception:
+                        log.exception(
+                            "quartz.state.partial_save_failed",
+                            path=str(self.state_path),
+                        )
+                    emitted_since_save = 0
             except Exception as e:
                 result.error_count += 1
                 log.error("quartz.entry.fail", slug=slug, err=str(e))
 
-        # Persist state after scan
+        # Persist state after scan (final flush)
         try:
             sensor_state.save(self.state_path, self.state)
         except Exception:
@@ -228,7 +262,12 @@ def _standalone_scan(
     cfg = LegionKoiConfig()
     try:
         storage = PostgresStorage(dsn=cfg.postgres.dsn)
-        storage.initialize()
+        # Review §3.2: do NOT call storage.initialize() — assumes the live
+        # legion-koi node has already created tables + triggers. Initialize
+        # would re-run DDL that races against the live process's NOTIFY
+        # listeners (re-attaching bundles_notify trigger drops in-flight
+        # events). Eagerly probe the connection instead.
+        storage._get_conn()
     except Exception as e:
         log.error("quartz.standalone.db_unavailable", err=str(e))
         return 2
@@ -239,11 +278,18 @@ def _standalone_scan(
         return 1
 
     new_count = update_count = unchanged = err = 0
+    emitted_since_save = 0
     for slug, entry in index.items():
         try:
             built = _build_bundle(slug, entry, base_url)
             if built is None:
                 err += 1
+                if err <= 10:
+                    log.info(
+                        "quartz.standalone.skip_non_dict",
+                        slug=slug,
+                        entry_type=type(entry).__name__,
+                    )
                 continue
             bundle, sha = built
             change = sensor_state.has_changed(slug, sha, state)
@@ -262,6 +308,17 @@ def _standalone_scan(
                 sha256_hash=sha,
             )
             state[slug] = sha
+            emitted_since_save += 1
+            if emitted_since_save >= STATE_SAVE_EVERY:
+                # Periodic state save (review §4.1) — survive SIGTERM mid-loop.
+                try:
+                    sensor_state.save(state_path, state)
+                except Exception:
+                    log.exception(
+                        "quartz.standalone.partial_save_failed",
+                        path=str(state_path),
+                    )
+                emitted_since_save = 0
         except Exception as e:
             err += 1
             log.exception("quartz.standalone.entry_fail", slug=slug, err=str(e))
