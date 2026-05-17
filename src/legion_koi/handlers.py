@@ -165,6 +165,19 @@ class TaskBundleHandler(KnowledgeHandler):
                 rid=str(kobj.rid),
                 missing_fields=["title"],
             )
+        # Lamport clock for concurrent multi-agent writes per
+        # mutation-paradigm-doctrine §6. Defaults to 1 for legacy bundles
+        # (reads forward without migration).
+        version = frontmatter.get("version", 1)
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise ValueError(
+                f"LegionTask bundle 'version' field must be int (Lamport clock), "
+                f"got {type(version).__name__}: {version!r}"
+            )
+        frontmatter["version"] = version
+        # Ensure frontmatter is written back to contents (in case
+        # kobj.contents.get returned the empty default).
+        kobj.contents["frontmatter"] = frontmatter
         kobj.normalized_event_type = kobj.event_type or EventType.NEW
         return kobj
 
