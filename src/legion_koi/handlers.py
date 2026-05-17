@@ -20,6 +20,45 @@ _postgres_storage = None
 REQUIRED_JOURNAL_FIELDS = {"title", "created"}
 
 
+# ── Doctrine metadata enums ──────────────────────────────────────────
+# Per mutation-paradigm-doctrine.md §6 — wires future tiers (BFT-CRDT
+# federation, smart-contract attestation, decentralized-storage archival)
+# without committing to them. All three default to no-op values; future
+# gate-open code reads these fields to decide where bundles propagate.
+
+_VISIBILITY_ENUM = frozenset({"private", "federated", "public"})
+_ARCHIVE_TARGET_ENUM = frozenset({"none", "arweave", "filecoin", "storj"})
+_GOVERNANCE_CHAIN_ENUM = frozenset({"none", "avalanche", "regen", "substrate"})
+
+
+def _normalize_doctrine_metadata(contents: dict) -> None:
+    """In-place: ensure the three doctrine metadata fields are present on
+    top-level contents with safe defaults; reject invalid enum values.
+
+    Called by every Bundle handler at the start of handle(). Per
+    mutation-paradigm-doctrine.md §6, these fields wire future tiers without
+    committing to them today.
+    """
+    visibility = contents.setdefault("visibility", "private")
+    if visibility not in _VISIBILITY_ENUM:
+        raise ValueError(
+            f"bundle 'visibility' must be one of {sorted(_VISIBILITY_ENUM)}, "
+            f"got {visibility!r}"
+        )
+    archive_target = contents.setdefault("archive_target", "none")
+    if archive_target not in _ARCHIVE_TARGET_ENUM:
+        raise ValueError(
+            f"bundle 'archive_target' must be one of {sorted(_ARCHIVE_TARGET_ENUM)}, "
+            f"got {archive_target!r}"
+        )
+    governance_chain = contents.setdefault("governance_chain", "none")
+    if governance_chain not in _GOVERNANCE_CHAIN_ENUM:
+        raise ValueError(
+            f"bundle 'governance_chain' must be one of {sorted(_GOVERNANCE_CHAIN_ENUM)}, "
+            f"got {governance_chain!r}"
+        )
+
+
 @dataclass
 class JournalBundleHandler(KnowledgeHandler):
     """Validates journal bundle contents have required frontmatter fields."""
@@ -29,6 +68,9 @@ class JournalBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         frontmatter = kobj.contents.get("frontmatter", {})
         missing = REQUIRED_JOURNAL_FIELDS - set(frontmatter.keys())
         if missing:
@@ -50,6 +92,9 @@ class RecordingBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         source = kobj.contents.get("source")
         filename = kobj.contents.get("filename")
         if not source or not filename:
@@ -71,6 +116,9 @@ class MessageBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         kobj.normalized_event_type = kobj.event_type or EventType.NEW
         return kobj
 
@@ -84,6 +132,9 @@ class PlanBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         title = kobj.contents.get("title")
         if not title:
             slog.warning(
@@ -104,6 +155,9 @@ class ResearchBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         frontmatter = kobj.contents.get("frontmatter", {})
         title = frontmatter.get("title")
         if not title:
@@ -136,6 +190,9 @@ class ContactBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         composite = kobj.contents.get("composite")
         dunbar_layer = kobj.contents.get("dunbar_layer")
         if composite is None or dunbar_layer is None:
@@ -157,6 +214,9 @@ class TaskBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         frontmatter = kobj.contents.get("frontmatter", {})
         title = frontmatter.get("title")
         if not title:
@@ -191,6 +251,9 @@ class BrowserHistoryBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         url = kobj.contents.get("url")
         bundle_type = kobj.contents.get("type")
         if not url:
@@ -213,6 +276,9 @@ class VentureBundleHandler(KnowledgeHandler):
     event_types = (EventType.NEW, EventType.UPDATE)
 
     def handle(self, kobj: KnowledgeObject) -> KnowledgeObject | None:
+        if kobj.contents is None:
+            kobj.contents = {}
+        _normalize_doctrine_metadata(kobj.contents)
         frontmatter = kobj.contents.get("frontmatter", {})
         missing = REQUIRED_VENTURE_FIELDS - set(frontmatter.keys())
         if missing:
