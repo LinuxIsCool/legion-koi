@@ -1,11 +1,13 @@
 """Legion KOI-net node entry point."""
 
 import json
+import subprocess
 from pathlib import Path
 
 import structlog
 
 from . import handlers
+from .health import make_health_router
 from .node import LegionKoiNode
 from .sensors.journal_sensor import JournalSensor
 from .sensors.venture_sensor import VentureSensor
@@ -317,6 +319,38 @@ def main():
     # Start live monitoring
     for sensor in all_sensors:
         sensor.start()
+
+    # Spore Phase 11a — /koi-net/health endpoint
+    # Register state + router on NodeServer's FastAPI app before serving requests.
+    class _HealthState:
+        def __init__(self):
+            try:
+                self.node_rid = str(node.identity.rid)
+            except Exception:
+                self.node_rid = "unknown"
+            self.sensor_count = len(all_sensors)
+            # bundle_count + last_bundle_at are filled live in health.py via storage DSN
+            self.bundle_count = 0
+            self.last_bundle_at = None
+            try:
+                self.build_sha = subprocess.check_output(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=Path(__file__).parent.parent.parent,
+                    stderr=subprocess.DEVNULL,
+                ).decode().strip()
+            except Exception:
+                self.build_sha = "unknown"
+
+    try:
+        node.server.app.state.health = _HealthState()
+        # Expose storage DSN for async live bundle stats (Task 4.3).
+        node.server.app.state.postgres_dsn = (
+            node.config.postgres.dsn if storage else None
+        )
+        node.server.app.include_router(make_health_router())
+        log.info("health.registered", path="/koi-net/health")
+    except Exception:
+        log.exception("health.registration_failed")
 
     try:
         node.run()
