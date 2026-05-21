@@ -7,6 +7,7 @@ from pathlib import Path
 import structlog
 
 from . import handlers
+from .endpoints import make_endpoints_router
 from .health import make_health_router
 from .node import LegionKoiNode
 from .sensors.journal_sensor import JournalSensor
@@ -347,8 +348,21 @@ def main():
         node.server.app.state.postgres_dsn = (
             node.config.postgres.dsn if storage else None
         )
+        # Expose storage handle for read-only endpoints (Phase 2.5 — unblock
+        # claude-koi MCP tools). See src/legion_koi/endpoints.py.
+        node.server.app.state.storage = storage
         node.server.app.include_router(make_health_router())
-        log.info("health.registered", path="/koi-net/health")
+        node.server.app.include_router(make_endpoints_router())
+        log.info(
+            "endpoints.registered",
+            paths=[
+                "/koi-net/health",
+                "/koi-net/namespaces",
+                "/koi-net/bundles/{rid}",
+                "/koi-net/search",
+                "/koi-net/bundles/{rid}/neighborhood",
+            ],
+        )
     except Exception:
         log.exception("health.registration_failed")
 
