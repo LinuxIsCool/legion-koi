@@ -822,6 +822,63 @@ class PostgresStorage:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_entity_neighbors(
+        self,
+        entity_ids: list[int],
+        exclude_rid: str,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Return bundles sharing at least one entity with the given entity IDs.
+
+        Used by the /koi-net neighborhood endpoint's entity-cooccurrence path.
+        Excludes the seed bundle (``exclude_rid``).
+        """
+        if not entity_ids:
+            return []
+        conn = self._get_conn()
+        rows = conn.execute(
+            """
+            SELECT DISTINCT b.rid, b.namespace, b.reference, b.contents,
+                            b.search_text, b.sha256_hash,
+                            b.created_at, b.updated_at
+            FROM bundle_entities be
+            JOIN bundles b ON b.rid = be.rid
+            WHERE be.entity_id = ANY(%s) AND be.rid != %s
+            LIMIT %s
+            """,
+            (entity_ids, exclude_rid, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_namespace_temporal_neighbors(
+        self,
+        namespace: str,
+        window_start: datetime,
+        window_end: datetime,
+        exclude_rid: str,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Return bundles in ``namespace`` with ``created_at`` inside the window.
+
+        Used by the /koi-net neighborhood endpoint's namespace+temporal
+        fallback path. Excludes the seed bundle (``exclude_rid``).
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            """
+            SELECT rid, namespace, reference, contents, search_text,
+                   sha256_hash, created_at, updated_at
+            FROM bundles
+            WHERE namespace = %s
+              AND created_at BETWEEN %s AND %s
+              AND rid != %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (namespace, window_start, window_end, exclude_rid, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def find_bundles_by_entity(
         self, name: str, entity_type: str | None = None, limit: int = 20
     ) -> list[dict]:

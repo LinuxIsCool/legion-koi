@@ -38,16 +38,22 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 
 def _bundle_to_payload(row: dict) -> dict:
-    """Shape a `bundles` table row into the {manifest, contents} envelope
-    callers expect. Mirrors the koi-net bundle layout used by personal-koi."""
+    """Shape a `bundles` table row into the {rid, manifest, contents} envelope
+    callers expect. Mirrors the koi-net bundle layout used by personal-koi.
+
+    The top-level ``rid`` is included alongside ``manifest.rid`` so consumers
+    can read it without digging into the manifest. All endpoints
+    (``/bundles/{rid}``, ``/search``, ``/neighborhood``) return this shape.
+    """
     created = row.get("created_at")
     updated = row.get("updated_at")
     if isinstance(created, datetime):
         created = created.isoformat()
     if isinstance(updated, datetime):
         updated = updated.isoformat()
+    rid = row.get("rid")
     manifest = {
-        "rid": row.get("rid"),
+        "rid": rid,
         "namespace": row.get("namespace"),
         "reference": row.get("reference"),
         "sha256_hash": row.get("sha256_hash"),
@@ -55,7 +61,7 @@ def _bundle_to_payload(row: dict) -> dict:
         "updated_at": updated,
     }
     contents = row.get("contents") or {}
-    return {"manifest": manifest, "contents": contents}
+    return {"rid": rid, "manifest": manifest, "contents": contents}
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -80,7 +86,7 @@ def _fetch_bundle_sync(storage, rid: str) -> dict | None:
 
 def _search_sync(storage, query: str, namespace: str | None, limit: int) -> list[dict]:
     rows = storage.search_text(query=query, namespace=namespace, limit=limit)
-    return [_bundle_to_payload(r) | {"rid": r.get("rid")} for r in rows]
+    return [_bundle_to_payload(r) for r in rows]
 
 
 def _neighborhood_sync(storage, rid: str, depth: int) -> dict | None:
@@ -115,28 +121,20 @@ def _neighborhood_sync(storage, rid: str, depth: int) -> dict | None:
         ents = []
 
     if ents:
-        # Walk entities → bundles via direct SQL. Cap to 20 neighbors.
+        # Walk entities → bundles via storage API. Cap to 20 neighbors.
         approximation = "entity-cooccurrence"
-        conn = storage._get_conn()
         entity_ids = [int(e["entity_id"]) for e in ents]
-        # Find bundles sharing any of these entity_ids, excluding the seed.
-        rows = conn.execute(
-            """
-            SELECT DISTINCT b.rid, b.namespace, b.reference, b.contents,
-                            b.sha256_hash, b.created_at, b.updated_at
-            FROM bundle_entities be
-            JOIN bundles b ON b.rid = be.rid
-            WHERE be.entity_id = ANY(%s) AND be.rid != %s
-            LIMIT 20
-            """,
-            (entity_ids, rid),
-        ).fetchall()
+        rows = storage.get_entity_neighbors(
+            entity_ids=entity_ids,
+            exclude_rid=rid,
+            limit=20,
+        )
         for r in rows:
-            d = dict(r)
-            if d["rid"] in seen_rids:
+            r_rid = r.get("rid")
+            if not r_rid or r_rid in seen_rids:
                 continue
-            seen_rids.add(d["rid"])
-            bundles.append(_bundle_to_payload(d))
+            seen_rids.add(r_rid)
+            bundles.append(_bundle_to_payload(r))
 
     if len(bundles) == 1:
         # Fallback: namespace + ±1h temporal proximity.
@@ -146,26 +144,19 @@ def _neighborhood_sync(storage, rid: str, depth: int) -> dict | None:
         if ns and isinstance(created, datetime):
             window_start = created - timedelta(hours=1)
             window_end = created + timedelta(hours=1)
-            conn = storage._get_conn()
-            rows = conn.execute(
-                """
-                SELECT rid, namespace, reference, contents,
-                       sha256_hash, created_at, updated_at
-                FROM bundles
-                WHERE namespace = %s
-                  AND created_at BETWEEN %s AND %s
-                  AND rid != %s
-                ORDER BY created_at DESC
-                LIMIT 20
-                """,
-                (ns, window_start, window_end, rid),
-            ).fetchall()
+            rows = storage.get_namespace_temporal_neighbors(
+                namespace=ns,
+                window_start=window_start,
+                window_end=window_end,
+                exclude_rid=rid,
+                limit=20,
+            )
             for r in rows:
-                d = dict(r)
-                if d["rid"] in seen_rids:
+                r_rid = r.get("rid")
+                if not r_rid or r_rid in seen_rids:
                     continue
-                seen_rids.add(d["rid"])
-                bundles.append(_bundle_to_payload(d))
+                seen_rids.add(r_rid)
+                bundles.append(_bundle_to_payload(r))
 
     return {
         "bundles": bundles,

@@ -21,34 +21,13 @@ from legion_koi.endpoints import make_endpoints_router
 # ──────────────────────────────────────────────────────────────────────────
 
 
-class _FakeCursorResult:
-    """Mimics `psycopg.Cursor.execute(...).fetchall()` over a list of dicts."""
-
-    def __init__(self, rows: list[dict]):
-        self._rows = rows
-
-    def fetchall(self) -> list[dict]:
-        return list(self._rows)
-
-
-class _FakeConn:
-    """Tiny `_get_conn().execute(sql, params).fetchall()` shim.
-
-    Pre-canned responses keyed by a fragment of the SQL.
-    """
-
-    def __init__(self, canned: dict[str, list[dict]]):
-        self._canned = canned
-
-    def execute(self, sql: str, params=None):
-        for key, rows in self._canned.items():
-            if key in sql:
-                return _FakeCursorResult(rows)
-        return _FakeCursorResult([])
-
-
 class StorageStub:
-    """Mimics enough of PostgresStorage for the endpoints tests."""
+    """Mimics enough of PostgresStorage for the endpoints tests.
+
+    Implements only the *public* methods that endpoints.py touches: get_stats,
+    get_bundle, search_text, get_bundle_entities, get_entity_neighbors, and
+    get_namespace_temporal_neighbors. No raw-SQL escape hatch needed.
+    """
 
     def __init__(
         self,
@@ -85,11 +64,31 @@ class StorageStub:
     def get_bundle_entities(self, rid: str) -> list[dict]:
         return list(self._entities.get(rid, []))
 
-    def _get_conn(self):
-        return _FakeConn({
-            "be.entity_id = ANY": self._neighbors_by_entity,
-            "BETWEEN": self._namespace_neighbors,
-        })
+    def get_entity_neighbors(
+        self,
+        entity_ids: list[int],
+        exclude_rid: str,
+        limit: int = 20,
+    ) -> list[dict]:
+        if not entity_ids:
+            return []
+        return [
+            r for r in self._neighbors_by_entity if r.get("rid") != exclude_rid
+        ][:limit]
+
+    def get_namespace_temporal_neighbors(
+        self,
+        namespace: str,
+        window_start,
+        window_end,
+        exclude_rid: str,
+        limit: int = 20,
+    ) -> list[dict]:
+        return [
+            r
+            for r in self._namespace_neighbors
+            if r.get("namespace") == namespace and r.get("rid") != exclude_rid
+        ][:limit]
 
 
 # ──────────────────────────────────────────────────────────────────────────
